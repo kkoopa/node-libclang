@@ -11,7 +11,7 @@
   "author": "Timothy J Fontaine <tjfontaine@gmail.com>",
   "license": "MIT",
   "dependencies": {
-    "ffi": "",
+    "ffi": "git@github.com:avatar5d/node-ffi.git",
     "ref": "",
     "ref-array": "",
     "ref-struct": ""
