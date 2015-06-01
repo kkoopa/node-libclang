@@ -9,8 +9,15 @@ var fs = require('fs'),
     Location = libclang.Location,
     index = new Index(true, true),
     filename = 'binding.cc',
-    tu = TranslationUnit.fromSource(index, filename, ['-I/home/kkoopa/.node-gyp/0.12.2/deps/v8/include/', '-I/home/kkoopa/.node-gyp/0.12.2/deps/uv/include/', '-I/home/kkoopa/.node-gyp/0.12.2/src/', '-Inode_modules/nan/']);
+    nodedir = '/usr/local/include/node/',
+    cpp11 = true,
+    args = [['-I', nodedir].join(''), '-Inode_modules/nan/'];
 
+    if (cpp11) {
+      args.push('-std=c++11');
+    }
+
+    var tu = TranslationUnit.fromSource(index, filename, args);
 
 function replacer(pattern, replacement, offset, length, cb) {
   fs.open(filename, 'r+', function (err, fd) {
@@ -39,28 +46,17 @@ function replacer(pattern, replacement, offset, length, cb) {
       if (cb) cb();
     });
   });
-
 }
 
 function replaceTo(name, to, offset, length, cb) {
-  console.log('Use of \'' + name + '\' found at:');
-  console.log('begin', offset);
-  console.log('end', offset + length);
   replacer(new RegExp('(.*)\\s*->\\s*' + name + '\\s*\\(\\s*\\)$'), 'NanTo<' + to + '>($1)', offset, length, cb);
 }
 
 function replaceMaybeZero(name, offset, length, cb) {
-  console.log('Use of \'' + name + '\' found at:');
-  console.log('begin', offset);
-  console.log('end', offset + length);
   replacer(new RegExp('(.*)\\s*->\\s*' + name + '\\s*\\(\\s*\\)$'), 'Nan' + name + '($1)', offset, length, cb);
 }
 
 function replaceMaybeSome(name, offset, length, cb) {
-  console.log('Use of \'' + name + '\' found at:');
-  console.log('begin', offset);
-  console.log('end', offset + length);
-
   fs.open(filename, 'r+', function (err, fd) {
     var buffer;
     if (err) {
@@ -140,7 +136,9 @@ function visitor (parent) {
           case 'ObjectProtoToString':
           case 'ToArrayIndex':
           case 'ToDetailString':
-            replaceMaybeZero(this.displayname, offset, length);
+            if (this.referenced.semanticParent.spelling == 'Object') {
+              replaceMaybeZero(this.displayname, offset, length);
+            }
             break;
           case 'CallAsConstructor':
           case 'CallAsFunction':
@@ -161,10 +159,12 @@ function visitor (parent) {
           case 'SetIndexedPropertyHandler':
           case 'SetNamedPropertyHandler':
           case 'SetPrototype':
-            replaceMaybeSome(this.displayname, offset, length);
+            if (this.referenced.semanticParent.spelling == 'Object') {
+              replaceMaybeSome(this.displayname, offset, length);
+            }
         }
     }
-    this.visitChildren(visitor);
+    return Cursor.Recurse;
   }
   return Cursor.Continue;
 }
