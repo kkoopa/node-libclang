@@ -13,15 +13,15 @@ var EventEmitter = require('events').EventEmitter,
     Location = libclang.Location,
     index = new Index(true, true),
     filename = 'binding.cc',
-    nodedir = '/usr/local/include/node/',
-    //node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
+    //nodedir = '/usr/local/include/node/',
+    node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
     cpp11 = true,
-    args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
-    /*args = [
+    //args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
+    args = [
       ['-I', node_gyp_header_dir, 'src/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/v8/include/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/uv/include/'].join(''),
-      '-Inode_modules/nan/'],*/
+      '-Inode_modules/nan/'],
     pending_patches = 0,
     patches = [],
     visited = [];
@@ -215,6 +215,11 @@ function replaceNanNewEmptyString(offset, length, cb) {
   replacer(/(?:.|[\r\n\s])*/g, 'NanEmptyString', offset, length, cb);
 }
 
+/*function motherfucker(name, replacement, offset, length, cb) {
+  readAt(filename, offset, length, function (err, s) {
+  });  
+}*/
+
 function replaceNanPrefix(name, offset, length, cb) {
    //TODO: Work on this
   //replacer(name, replacement, offset, length, cb);
@@ -249,6 +254,12 @@ function visitor(parent) {
             replaceNanPrefix('Persistent', offset, length);
             break;
           case 'TryCatch':
+            console.log('*******************');
+            console.log('TryCatch found');
+            console.log(this.type.declaration.canonical.spelling);
+            console.log('offset', offset);
+            console.log(this.location.presumedLocation);
+            console.log(endloc);
             replaceNanPrefix('TryCatch', offset, length);
         }
         break;
@@ -277,6 +288,12 @@ function visitor(parent) {
             //insert warning on new line above (unleass already done so)
             break;
           case 'NanNew':
+            console.log('*******************');
+            console.log('NanNew found');
+            console.log(this.type.declaration.canonical.spelling);
+            console.log('offset', offset);
+            console.log(this.location.presumedLocation);
+            console.log(endloc);
             var s = readAt(filename, offset, length);
             var arg0type = this.definition.type.getArg(0);
             if (this.definition.numArguments === 0
