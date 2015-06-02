@@ -322,6 +322,12 @@ function visitor(parent) {
             if (this.referenced.semanticParent.spelling === 'Array') {
               replaceMaybeSome(this.displayname, offset, length);
             }
+          case 'NanAssignPersistent':
+          case 'NanDisposePersistent':
+          case 'NanMakeWeakPersistent':
+          case 'NanObjectWrapHandle':
+            console.log(this.spelling);
+            break;
         }
     }
     return Cursor.Recurse;
