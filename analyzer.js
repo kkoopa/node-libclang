@@ -1,4 +1,6 @@
-var fs = require('fs'),
+var EventEmitter = require('events').EventEmitter,
+    emitter = new EventEmitter(),
+    fs = require('fs'),
     jsdiff = require('diff'),
     libclang = require('./'),
     lib = require('./lib/dynamic_clang').libclang,
@@ -11,16 +13,18 @@ var fs = require('fs'),
     Location = libclang.Location,
     index = new Index(true, true),
     filename = 'binding.cc',
-    //nodedir = '/usr/local/include/node/',
-    node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
+    nodedir = '/usr/local/include/node/',
+    //node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
     cpp11 = true,
-    //args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
-    args = [
+    args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
+    /*args = [
       ['-I', node_gyp_header_dir, 'src/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/v8/include/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/uv/include/'].join(''),
-      '-Inode_modules/nan/'],
-    patches = [];
+      '-Inode_modules/nan/'],*/
+    pending_patches = 0,
+    patches = [],
+    visited = [];
 
     if (cpp11) {
       args.push('-std=c++11');
@@ -59,7 +63,15 @@ function readAt(filename, offset, length, cb) {
   }
 }
 
-function replacer(pattern, replacement, offset, length, cb) {
+function replacer(pattern, replacement, offset, length, matchgroup, cb) {
+/*  if (visited[offset]) {
+    if (cb) cb(false);
+    return;
+  }
+  visited[offset] = true;*/
+  pending_patches++;
+  //console.log('increasing pending patches to: ', pending_patches);
+  //console.log('because of offset: ', offset);
   readAt(filename, offset, length, function (err, s) {
     if (err) {
       if (cb) {
@@ -68,26 +80,49 @@ function replacer(pattern, replacement, offset, length, cb) {
         throw err;
       }
     }
-    var temp = s.replace(pattern, replacement);
-    console.log([offset, temp.length - s.length, s, s.replace(pattern, replacement)].join('\n'));
+    var re = new RegExp(pattern);
+    var org = re.exec(s);
+    if (org) {
+      console.log('***',s);
+      var temp = org[matchgroup ? matchgroup : 0].replace(pattern, replacement);
+      patches.push({
+        offset: offset + s.indexOf(org[matchgroup ? matchgroup : 0]),
+        delta: temp.length - org[matchgroup ? matchgroup : 0].length,
+        original: org[matchgroup ? matchgroup : 0],
+        replacement: temp
+      });
+    }
+    //console.log('pending patches: ', pending_patches - 1);
+    if (--pending_patches === 0) {
+      emitter.emit('done');
+    }
+    //console.log([offset, temp.length - s.length, s, temp].join('\n'));
     if (cb) cb();
   });
 }
 
 
 function replaceTo(name, to, offset, length, cb) {
-  replacer(new RegExp('(.*)\\s*->\\s*' + name + '\\s*\\(\\s*\\)$'), 'NanTo<' + to + '>($1).FromJust()', offset, length, cb);
+  replacer(new RegExp('(.*)\\s*->\\s*' + name + '\\s*\\(\\s*\\)$', 'g'), 'NanTo<' + to + '>($1).FromJust()', offset, length, cb);
 }
 
 function replaceToLocal(name, to, offset, length, cb) {
-  replacer(new RegExp('(.*)\\s*->\\s*' + name + '\\s*\\(\\s*\\)$'), 'NanTo<' + to + '>($1).ToLocalChecked()', offset, length, cb);
+  replacer(new RegExp('(.*)\\s*->\\s*' + name + '\\s*\\(\\s*\\)$', 'g'), 'NanTo<' + to + '>($1).ToLocalChecked()', offset, length, cb);
 }
 
 function replaceMaybeZero(name, offset, length, cb) {
-  replacer(new RegExp('(.*)\\s*->\\s*' + name + '\\s*\\(\\s*\\)$'), 'Nan' + name + '($1)', offset, length, cb);
+  replacer(new RegExp('(.*)\\s*->\\s*' + name + '\\s*\\(\\s*\\)$', 'g'), 'Nan' + name + '($1)', offset, length, cb);
 }
 
 function replaceMaybeSome(name, offset, length, cb) {
+  /*if (visited[offset]) {
+    if (cb) cb(false);
+    return;
+  }
+  visited[offset] = true;*/
+  pending_patches++;
+  //console.log('increasing pending patches to: ', pending_patches);
+  //console.log('because of offset: ', offset);
   readAt(filename, offset, length, function (err, s) {
     if (err) {
       if (cb) {
@@ -102,7 +137,21 @@ function replaceMaybeSome(name, offset, length, cb) {
 
     if (res) {
       var temp = ['Nan', name, '(', res[1], ', ', s.slice(re.lastIndex)].join('');
-      console.log([offset, temp.length - s.length, s, temp].join('\n'));
+      patches.push({
+        offset: offset,
+        delta: temp.length - s.length,
+        original: s,
+        replacement: temp
+      });
+      //console.log('pending patches: ', pending_patches - 1);
+      if (--pending_patches === 0) {
+        emitter.emit('done');
+      }
+      //console.log([offset, temp.length - s.length, s, temp].join('\n'));
+    } else {
+      console.log('weird');
+      console.log(s);
+      pending_patches--;
     }
 
     if (cb) cb(false);
@@ -114,6 +163,14 @@ function replaceArgs(offset, length, cb) {
 }
 
 function replaceEquals(offset, length, cb) {
+  /*if (visited[offset]) {
+    if (cb) cb(false);
+    return;
+  }
+  visited[offset] = true;*/
+  pending_patches++;
+  //console.log('increasing pending patches to: ', pending_patches);
+  //console.log('because of offset: ', offset);
   readAt(filename, offset, length, function (err, s) {
     if (err) {
       if (cb) {
@@ -129,7 +186,21 @@ function replaceEquals(offset, length, cb) {
 
     if (res) {
       var temp = ['NanEquals(', res[1], ', ', s.slice(re.lastIndex)].join('');
-      console.log([offset, temp.length - s.length, s, temp].join('\n'));
+      patches.push({
+        offset: offset,
+        delta: temp.length - s.length,
+        original: s,
+        replacement: temp
+      });
+      //console.log('pending patches: ', pending_patches - 1);
+      if (--pending_patches === 0) {
+        emitter.emit('done');
+      }
+      //console.log([offset, temp.length - s.length, s, temp].join('\n'));
+    } else {
+      console.log('weird');
+      console.log(s);
+      pending_patches--;
     }
 
     if (cb) cb(false);
@@ -137,15 +208,17 @@ function replaceEquals(offset, length, cb) {
 }
 
 function replaceNanNew(offset, length, cb) {
-  replacer(/(?:.|[\r\n\s])*/, '$&.ToLocalChecked()', offset, length, cb);
+  replacer(/(?:.|[\r\n\s])*/g, '$&.ToLocalChecked()', offset, length, cb);
 }
 
 function replaceNanNewEmptyString(offset, length, cb) {
-  replacer(/(?:.|[\r\n\s])*/, 'NanEmptyString', offset, length, cb);
+  replacer(/(?:.|[\r\n\s])*/g, 'NanEmptyString', offset, length, cb);
 }
 
 function replaceNanPrefix(name, offset, length, cb) {
-  replacer(new RegExp(name), 'Nan$&', offset, length, cb);
+   //TODO: Work on this
+  //replacer(name, replacement, offset, length, cb);
+  replacer(new RegExp('((?:v8::)?' + name + ')', 'g'), 'Nan$1', offset, length, 1, cb);
 }
 
 function visitor(parent) {
@@ -157,7 +230,7 @@ function visitor(parent) {
       name,
       rd;
 
-  if (this.location.presumedLocation.filename === filename) {
+  if (this.location.presumedLocation.filename === filename /*&& !visited[this.location.fileLocation(filename).offset]*/) {
     startloc = this.extent.start.fileLocation(lib.clang_getFile(tu._instance, filename));
     endloc = this.extent.end.fileLocation(lib.clang_getFile(tu._instance, filename));
     offset = startloc.offset;
@@ -220,11 +293,6 @@ function visitor(parent) {
                 case 'String':
                   replaceNanNew(offset, length);
                   break;
-/*                default:
-                  console.log('ignoring', s);
-                  console.log('kind', arg0type.kind);
-                  console.log('type', arg0type.canonical.spelling);
-                  //console.log('template arg type', this.definition.getTemplateArgumentType(0).declaration.spelling);*/
               }
             }
             break;
@@ -240,6 +308,9 @@ function visitor(parent) {
           case 'ToObject':
           case 'ToString':
           case 'ToUint32':
+            /*console.log('ToSomething called');
+            console.log(offset);
+            console.log(readAt(filename, offset, length));*/
             if (this.referenced.semanticParent.spelling === 'Value') {
               replaceToLocal(this.displayname, 'v8::' + /To(\w+)$/.exec(this.displayname)[1], offset, length);
             }
@@ -338,3 +409,42 @@ function visitor(parent) {
 tu.cursor.visitChildren(visitor);
 
 index.dispose();
+
+emitter.on('done', function () {
+  var total = 0,
+      length,
+      i;
+
+  patches.sort(function (a, b) {
+    return a.offset - b.offset;
+  }).filter(function (patch, pos, arr) {
+    return !pos || patch.offset !== arr[pos - 1].offset;
+  });
+
+  for (i = 0, length = patches.length; i < length; i++) {
+    patches[i].newoffset = patches[i].offset + total;
+    total += patches[i].delta;
+    //console.log(patches[i]);
+  }
+
+  fs.readFile(filename, {encoding: 'utf8'}, function (err, data) {
+    var parts = [];
+
+    patches.forEach(function (patch, pos, arr) {
+      //console.log(patch.original);
+      //console.log(patch.replacement);
+      if (pos > 0) {
+        parts.push(data.substring(arr[pos - 1].offset + arr[pos -1].original.length, patch.offset));
+      } else {
+        parts.push(data.substring(0, patch.offset));
+      }
+      parts.push(patch.replacement);
+    });
+
+    parts.push(data.substring(patches[patches.length -1].offset + patches[patches.length - 1].original.length, data.length));
+
+    fs.writeFile(filename + '.new', parts.join(''), function (err) {
+      if (err) throw err;
+    });
+  });
+});
