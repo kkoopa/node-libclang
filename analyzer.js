@@ -13,15 +13,15 @@ var EventEmitter = require('events').EventEmitter,
     Location = libclang.Location,
     index = new Index(true, true),
     filename = 'binding.cc',
-    nodedir = '/usr/local/include/node/',
-    //node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
-    cpp11 = true,
-    args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
-    /*args = [
+    //nodedir = '/usr/local/include/node/',
+    node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
+    cpp11 = false,
+    //args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
+    args = [
       ['-I', node_gyp_header_dir, 'src/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/v8/include/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/uv/include/'].join(''),
-      '-Inode_modules/nan/'],*/
+      '-Inode_modules/nan/'],
     pending_patches = 0,
     patches = [],
     visited = [];
@@ -265,14 +265,10 @@ function visitor(parent) {
             console.log(range.end.presumedLocation);
             var tokenlist = this.extent.tokenize(tu);
             console.log('Tokens:');
-            console.log(tokenlist.get(0).spelling);
-            console.log(tokenlist.get(1).spelling);
-            //console.log(tokenlist.get(2).spelling);
-            /*for (var i = 0; i < tokenlist.length; i++) {
-              console.log(tokenlist.get(i).kind);
-            }*/
+            for (var i = 0; i < tokenlist.length; i++) {
+              console.log(tokenlist.get(i).spelling);
+            }
             tokenlist.dispose();
-            throw 'break';
             replaceNanPrefix('TryCatch', offset, length);
         }
         break;
