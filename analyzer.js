@@ -261,13 +261,15 @@ function visitor(parent) {
             var tokenlist = this.extent.tokenize(tu);
             console.log('Tokens:');
             for (var i = 0; i < tokenlist.length; i++) {
-              console.log(tokenlist.get(i).spelling);
+              var tok = tokenlist.get(i);
+              console.log(tok.spelling);
+              console.log(tok.location.fileLocation);
             }
             var annotatedlist = tokenlist.annotate;
             //console.log('annlist', annotatedlist);
             for (var i = 0; i < annotatedlist.length; i++) {
-              console.log(annotatedlist[i].extent.start.presumedLocation);
-              console.log(annotatedlist[i].extent.end.presumedLocation);
+              console.log(annotatedlist[i].extent.start.fileLocation);
+              console.log(annotatedlist[i].extent.end.fileLocation);
             }
             tokenlist.dispose();
             replaceNanPrefix('TryCatch', offset, length);
