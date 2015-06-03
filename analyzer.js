@@ -215,11 +215,6 @@ function replaceNanNewEmptyString(offset, length, cb) {
   replacer(/(?:.|[\r\n\s])*/g, 'NanEmptyString', offset, length, cb);
 }
 
-/*function motherfucker(name, replacement, offset, length, cb) {
-  readAt(filename, offset, length, function (err, s) {
-  });
-}*/
-
 function replaceNanPrefix(name, offset, length, cb) {
    //TODO: Work on this
   //replacer(name, replacement, offset, length, cb);
@@ -267,6 +262,12 @@ function visitor(parent) {
             console.log('Tokens:');
             for (var i = 0; i < tokenlist.length; i++) {
               console.log(tokenlist.get(i).spelling);
+            }
+            var annotatedlist = tokenlist.annotate;
+            //console.log('annlist', annotatedlist);
+            for (var i = 0; i < annotatedlist.length; i++) {
+              console.log(annotatedlist[i].extent.start.presumedLocation);
+              console.log(annotatedlist[i].extent.end.presumedLocation);
             }
             tokenlist.dispose();
             replaceNanPrefix('TryCatch', offset, length);
