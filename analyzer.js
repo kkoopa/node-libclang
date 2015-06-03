@@ -3,7 +3,6 @@ var EventEmitter = require('events').EventEmitter,
     fs = require('fs'),
     jsdiff = require('diff'),
     libclang = require('./'),
-    lib = require('./lib/dynamic_clang').libclang,
     Index = libclang.Index,
     Cursor = libclang.Cursor,
     Token = libclang.Token,
@@ -45,6 +44,7 @@ function readAt(filename, offset, length, cb) {
         }
       }
       buffer = new Buffer(length);
+      console.log('reading', length, 'bytes', 'of', filename, 'at offset', offset);
       fs.read(fd, buffer, 0, length, offset, function (err, bytesRead, buffer) {
         if (err) {
           if (cb) {
@@ -215,65 +215,120 @@ function replaceNanNewEmptyString(offset, length, cb) {
   replacer(/(?:.|[\r\n\s])*/g, 'NanEmptyString', offset, length, cb);
 }
 
+function replacer2(replacement, offset, length, cb) {
+  pending_patches++;
+  console.log('reading at', offset);
+  readAt(filename, offset, length, function (err, s) {
+    if (err) {
+      if (cb) {
+        cb(err);
+      } else {
+        throw err;
+      }
+    }
+    patches.push({
+      offset: offset,
+      delta: replacement.length - length,
+      original: s,
+      replacement: replacement
+    });
+
+    if (--pending_patches === 0) {
+      emitter.emit('done');
+    }
+
+    if (cb) cb();
+  });
+
+}
+
 function replaceNanPrefix(name, offset, length, cb) {
-   //TODO: Work on this
-  //replacer(name, replacement, offset, length, cb);
-  replacer(new RegExp('((?:v8::)?' + name + ')', 'g'), 'Nan$1', offset, length, 1, cb);
+  replacer2('Nan' + name, offset, length, cb);
+  //replacer(new RegExp('((?:v8::)?' + name + ')', 'g'), 'Nan$1', offset, length, 1, cb);
+}
+
+function getReplacementEnd(match, extent) {
+  var tokenlist = extent.tokenize(tu),
+      i,
+      length,
+      token,
+      spelling,
+      returnvalue;
+
+  for(i = 0, length = tokenlist.length; i < length; i++) {
+    token = tokenlist.get(i);
+    spelling = token.spelling;
+    console.log('token', spelling);
+    if (spelling === match) {
+      returnvalue = token.location.fileLocation.offset + spelling.length;
+      break;
+    }
+  }
+
+  tokenlist.dispose();
+  return returnvalue;
 }
 
 function visitor(parent) {
   var self = this,
+      extent,
       startloc,
       endloc,
       offset,
       length,
+      spelling,
       name,
-      rd;
+      tok,
+      rd,
+      idx;
 
   if (this.location.presumedLocation.filename === filename /*&& !visited[this.location.fileLocation.offset]*/) {
-    startloc = this.extent.start.fileLocation;
-    endloc = this.extent.end.fileLocation;
+    extent = this.extent;
+    startloc = extent.start.fileLocation;
+    endloc = extent.end.fileLocation;
     offset = startloc.offset;
-    length = endloc.offset - startloc.offset;
+    length = endloc.offset - offset;
+    spelling = this.type.declaration.spelling;
 
     switch (this.kind) {
       case Cursor.TypeRef:
-        switch (this.type.declaration.spelling) {
+        switch (spelling) {
           case 'ObjectWrap':
-            replaceNanPrefix('ObjectWrap', offset, length);
+            /*console.log('**********');
+            console.log('ObjectWrap');
+            console.log('offset', offset)
+            console.log(parent.spelling);
+            console.log(parent.kind);*/
+            //TODO: FIX THIS
+            /*if (parent.kind === Cursor.CXXBaseSpecifier) {
+              var s = readAt(filename, parent.extent.start.fileLocation.offset, offset);
+              var re = /node\s*::\s*ObjectWrap/mg;
+              var lastIndexOf = -1;
+              var nextStop = 0;
+              var result;
+              while ((result = re.exec(s)) !== null) {
+                console.log(result);
+                lastIndexOf = result.index;
+                re.lastIndex = result.index + 1;
+              }
+              console.log('lastIndexOf', lastIndexOf);
+              if (lastIndexOf === -1) {
+                console.log('ASDASDADADASDAS');
+                console.log('old offset', offset);
+                offset = this.semanticParent.extent.start.fileLocation.offset + lastIndexOf;
+                console.log('new offset', offset);
+              }
+            }*/
+            length = endloc.offset - offset;
+            replaceNanPrefix(spelling, offset, length);
         }
         break;
       case Cursor.VarDecl:
-        switch (this.type.declaration.spelling) {
+        switch (spelling) {
           case 'Persistent':
-            replaceNanPrefix('Persistent', offset, length);
-            break;
           case 'TryCatch':
-            console.log('*******************');
-            console.log('TryCatch found');
-            console.log(this.type.declaration.canonical.spelling);
-            console.log('offset', offset);
-            console.log(this.location.presumedLocation);
-            console.log(endloc);
-            var range = this.spellingNameRange;
-            console.log(range.start.presumedLocation);
-            console.log(range.end.presumedLocation);
-            var tokenlist = this.extent.tokenize(tu);
-            console.log('Tokens:');
-            for (var i = 0; i < tokenlist.length; i++) {
-              var tok = tokenlist.get(i);
-              console.log('kind', Object.keys(Token).filter(function (key) { return Token[key] === tok.kind; })[0]);
-              console.log(tok.spelling);
-              console.log(tok.location.fileLocation);
-            }
-            var annotatedlist = tokenlist.annotate;
-            //console.log('annlist', annotatedlist);
-            for (var i = 0; i < annotatedlist.length; i++) {
-              console.log(annotatedlist[i].extent.start.fileLocation);
-              console.log(annotatedlist[i].extent.end.fileLocation);
-            }
-            tokenlist.dispose();
-            replaceNanPrefix('TryCatch', offset, length);
+            length = getReplacementEnd(spelling, extent) - offset;
+            replaceNanPrefix(spelling, offset, length);
         }
         break;
       case Cursor.DeclRefExpr:
