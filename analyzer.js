@@ -13,15 +13,15 @@ var EventEmitter = require('events').EventEmitter,
     Location = libclang.Location,
     index = new Index(true, true),
     filename = 'binding.cc',
-    //nodedir = '/usr/local/include/node/',
-    node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
+    nodedir = '/usr/local/include/node/',
+    //node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
     cpp11 = true,
-    //args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
-    args = [
+    args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
+    /*args = [
       ['-I', node_gyp_header_dir, 'src/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/v8/include/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/uv/include/'].join(''),
-      '-Inode_modules/nan/'],
+      '-Inode_modules/nan/'],*/
     pending_patches = 0,
     patches = [],
     visited = [];
@@ -217,7 +217,7 @@ function replaceNanNewEmptyString(offset, length, cb) {
 
 /*function motherfucker(name, replacement, offset, length, cb) {
   readAt(filename, offset, length, function (err, s) {
-  });  
+  });
 }*/
 
 function replaceNanPrefix(name, offset, length, cb) {
@@ -235,9 +235,9 @@ function visitor(parent) {
       name,
       rd;
 
-  if (this.location.presumedLocation.filename === filename /*&& !visited[this.location.fileLocation(filename).offset]*/) {
-    startloc = this.extent.start.fileLocation(lib.clang_getFile(tu._instance, filename));
-    endloc = this.extent.end.fileLocation(lib.clang_getFile(tu._instance, filename));
+  if (this.location.presumedLocation.filename === filename /*&& !visited[this.location.fileLocation.offset]*/) {
+    startloc = this.extent.start.fileLocation;
+    endloc = this.extent.end.fileLocation;
     offset = startloc.offset;
     length = endloc.offset - startloc.offset;
 
@@ -260,6 +260,19 @@ function visitor(parent) {
             console.log('offset', offset);
             console.log(this.location.presumedLocation);
             console.log(endloc);
+            var range = this.spellingNameRange;
+            console.log(range.start.presumedLocation);
+            console.log(range.end.presumedLocation);
+            var tokenlist = this.extent.tokenize(tu);
+            console.log('Tokens:');
+            console.log(tokenlist.get(0).spelling);
+            console.log(tokenlist.get(1).spelling);
+            //console.log(tokenlist.get(2).spelling);
+            /*for (var i = 0; i < tokenlist.length; i++) {
+              console.log(tokenlist.get(i).kind);
+            }*/
+            tokenlist.dispose();
+            throw 'break';
             replaceNanPrefix('TryCatch', offset, length);
         }
         break;
@@ -294,6 +307,9 @@ function visitor(parent) {
             console.log('offset', offset);
             console.log(this.location.presumedLocation);
             console.log(endloc);
+            var range = this.spellingNameRange;
+            console.log(range.start.presumedLocation);
+            console.log(range.end.presumedLocation);
             var s = readAt(filename, offset, length);
             var arg0type = this.definition.type.getArg(0);
             if (this.definition.numArguments === 0
