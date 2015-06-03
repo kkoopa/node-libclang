@@ -6,7 +6,7 @@ var EventEmitter = require('events').EventEmitter,
     lib = require('./lib/dynamic_clang').libclang,
     Index = libclang.Index,
     Cursor = libclang.Cursor,
-    CXToken = libclang.CXToken,
+    Token = libclang.Token,
     Range = libclang.Range,
     TranslationUnit = libclang.TranslationUnit,
     Type = libclang.Type,
@@ -26,11 +26,11 @@ var EventEmitter = require('events').EventEmitter,
     patches = [],
     visited = [];
 
-    if (cpp11) {
-      args.push('-std=c++11');
-    }
+if (cpp11) {
+  args.push('-std=c++11');
+}
 
-    var tu = TranslationUnit.fromSource(index, filename, args);
+var tu = TranslationUnit.fromSource(index, filename, args);
 
 function readAt(filename, offset, length, cb) {
   var buffer;
@@ -262,6 +262,7 @@ function visitor(parent) {
             console.log('Tokens:');
             for (var i = 0; i < tokenlist.length; i++) {
               var tok = tokenlist.get(i);
+              console.log('kind', Object.keys(Token).filter(function (key) { return Token[key] === tok.kind; })[0]);
               console.log(tok.spelling);
               console.log(tok.location.fileLocation);
             }

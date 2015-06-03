@@ -22,5 +22,7 @@ exports.Cursor = require('./lib/cursor');
 exports.Index = require('./lib/index');
 exports.Range = require('./lib/range');
 exports.TranslationUnit = require('./lib/translationunit');
+exports.Token = require('./lib/token');
+exports.TokenList = require('./lib/tokenlist');
 exports.Type = require('./lib/type');
 exports.Location = require('./lib/location');
