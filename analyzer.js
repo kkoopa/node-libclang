@@ -3,6 +3,7 @@ var EventEmitter = require('events').EventEmitter,
     fs = require('fs'),
     jsdiff = require('diff'),
     libclang = require('./'),
+    superlib = require('./lib/dynamic_clang'),
     Index = libclang.Index,
     Cursor = libclang.Cursor,
     Token = libclang.Token,
@@ -12,15 +13,15 @@ var EventEmitter = require('events').EventEmitter,
     Location = libclang.Location,
     index = new Index(true, true),
     filename = 'binding.cc',
-    //nodedir = '/usr/local/include/node/',
-    node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
-    cpp11 = false,
-    //args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
-    args = [
+    nodedir = '/usr/local/include/node/',
+    //node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
+    cpp11 = true,
+    args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
+    /*args = [
       ['-I', node_gyp_header_dir, 'src/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/v8/include/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/uv/include/'].join(''),
-      '-Inode_modules/nan/'],
+      '-Inode_modules/nan/'],*/
     pending_patches = 0,
     patches = [],
     visited = [];
@@ -44,7 +45,6 @@ function readAt(filename, offset, length, cb) {
         }
       }
       buffer = new Buffer(length);
-      console.log('reading', length, 'bytes', 'of', filename, 'at offset', offset);
       fs.read(fd, buffer, 0, length, offset, function (err, bytesRead, buffer) {
         if (err) {
           if (cb) {
@@ -83,7 +83,6 @@ function replacer(pattern, replacement, offset, length, matchgroup, cb) {
     var re = new RegExp(pattern);
     var org = re.exec(s);
     if (org) {
-      console.log('***',s);
       var temp = org[matchgroup ? matchgroup : 0].replace(pattern, replacement);
       patches.push({
         offset: offset + s.indexOf(org[matchgroup ? matchgroup : 0]),
@@ -217,7 +216,6 @@ function replaceNanNewEmptyString(offset, length, cb) {
 
 function replacer2(replacement, offset, length, cb) {
   pending_patches++;
-  console.log('reading at', offset);
   readAt(filename, offset, length, function (err, s) {
     if (err) {
       if (cb) {
@@ -247,20 +245,35 @@ function replaceNanPrefix(name, offset, length, cb) {
   //replacer(new RegExp('((?:v8::)?' + name + ')', 'g'), 'Nan$1', offset, length, 1, cb);
 }
 
-function getReplacementEnd(match, extent) {
+function getReplacementRange(match, extent) {
   var tokenlist = extent.tokenize(tu),
       i,
       length,
       token,
       spelling,
-      returnvalue;
+      returnvalue = [],
+      resetToLast = false;
 
   for(i = 0, length = tokenlist.length; i < length; i++) {
     token = tokenlist.get(i);
+    if (i === 0) {
+      returnvalue[0] = token.location.fileLocation.offset;
+    }
+
+    if (token.kind === Token.Keyword) {
+      resetToLast = true;
+      continue;
+    }
+
+    if (resetToLast) {
+      returnvalue[0] = token.location.fileLocation.offset;
+      resetToLast = false;
+    }
+
     spelling = token.spelling;
     console.log('token', spelling);
     if (spelling === match) {
-      returnvalue = token.location.fileLocation.offset + spelling.length;
+      returnvalue[1] = token.location.fileLocation.offset + spelling.length;
       break;
     }
   }
@@ -318,28 +331,23 @@ function visitor(parent) {
           case 'ObjectWrap':
             console.log('**********');
             console.log('ObjectWrap');
-            console.log('offset', offset)
-            console.log(parent.spelling);
-            console.log(parent.kind);
             if (parent.kind === Cursor.CXXBaseSpecifier) {
-              var s = readAt(filename, 0, offset);
-              console.log(s);
-              var idx = findback(s);
-              console.log(idx);
-              if (idx !== -1) {
-                offset = idx;
-              }
+              var somecursor = tu.getCursor(tu.getLocationForOffset(tu.getFile(filename), offset - 1));
+              offset = somecursor.extent.start.fileLocation.offset;
+              var pair = getReplacementRange(spelling, somecursor.extent);
+              replaceNanPrefix(spelling, pair[0], pair[1] - pair[0]);
+            } else {
+              var pair = getReplacementRange(spelling, extent);
+              replaceNanPrefix(spelling, pair[0], pair[1] - pair[0]);
             }
-            length = endloc.offset - offset;
-            replaceNanPrefix(spelling, offset, length);
         }
         break;
       case Cursor.VarDecl:
         switch (spelling) {
           case 'Persistent':
           case 'TryCatch':
-            length = getReplacementEnd(spelling, extent) - offset;
-            replaceNanPrefix(spelling, offset, length);
+            var pair = getReplacementRange(spelling, extent);
+            replaceNanPrefix(spelling, pair[0], pair[1] - pair[0]);
         }
         break;
       case Cursor.DeclRefExpr:
@@ -367,15 +375,15 @@ function visitor(parent) {
             //insert warning on new line above (unleass already done so)
             break;
           case 'NanNew':
-            console.log('*******************');
+            /*console.log('*******************');
             console.log('NanNew found');
             console.log(this.type.declaration.canonical.spelling);
             console.log('offset', offset);
             console.log(this.location.presumedLocation);
-            console.log(endloc);
+            console.log(endloc);*/
             var range = this.spellingNameRange;
-            console.log(range.start.presumedLocation);
-            console.log(range.end.presumedLocation);
+            //console.log(range.start.presumedLocation);
+            //console.log(range.end.presumedLocation);
             var s = readAt(filename, offset, length);
             var arg0type = this.definition.type.getArg(0);
             if (this.definition.numArguments === 0
