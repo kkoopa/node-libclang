@@ -138,9 +138,10 @@ function replaceMaybeZero(name, offset, length, cb) {
   replacer(new RegExp('(.*)\\s*->\\s*' + name + '\\s*\\(\\s*\\)$', 'g'), 'Nan' + name + '($1)', offset, length, cb);
 }
 
-function replaceMaybeSome(name, extent, cb) {
+function replaceMaybeSome(name, extent, hasargs, cb) {
   var tokens = extent.tokenize(tu),
       length = tokens.length,
+      cb_ = cb ? cb : hasargs instanceof Function ? hasargs : undefined,
       i = length,
       name_token,
       paren_token,
@@ -162,8 +163,8 @@ function replaceMaybeSome(name, extent, cb) {
       if (name_token.spelling === name) {
         operator_token = tokens.get(i - 2);
         if (operator_token.kind === Token.Punctuation) {
-          replacement = ['Nan', name, '(', readAt(filename, start_offset, operator_token.location.fileLocation.offset - start_offset), ', '].join('');
-          replacer2(replacement, start_offset, paren_token.location.fileLocation.offset + 1 - start_offset, cb);
+          replacement = ['Nan', name, '(', readAt(filename, start_offset, operator_token.location.fileLocation.offset - start_offset), hasargs ? ', ' : ''].join('');
+          replacer2(replacement, start_offset, paren_token.location.fileLocation.offset + 1 - start_offset, cb_);
           break;
         }
       }
@@ -272,6 +273,43 @@ function getReplacementRange(match, extent) {
   return returnvalue;
 }
 
+function getOtherReplacementRange(match, extent) {
+  var tokenlist = extent.tokenize(tu),
+      i,
+      length,
+      token,
+      token2,
+      lastIdx,
+      spelling,
+      returnvalue = [];
+
+  for(i = 0, length = tokenlist.length; i < length; i++) {
+    token = tokenlist.get(i);
+    spelling = token.spelling;
+
+    if (spelling === 'node') {
+      token2 = tokenlist.get(i + 2);
+      if (tokenlist.get(i + 1).spelling === '::' && token2.spelling === match) {
+        returnvalue[0] = token.location.fileLocation.offset;
+        returnvalue[1] = token2.location.fileLocation.offset + token2.spelling.length;
+        break;
+      }
+    } else if (spelling === match) {
+      lastIdx = i;
+    }
+  }
+
+  if (i === length) {
+    token = tokenlist.get(lastIdx);
+    returnvalue[0] = token.location.fileLocation.offset;
+    returnvalue[1] = returnvalue[0] + token.spelling.length;
+  }
+
+  tokenlist.dispose();
+  return returnvalue;
+}
+
+
 function findback(s) {
   for (var i = s.length - 1; i >= 0; i--) {
     for (var j = i; j < s.length; j++) {
@@ -324,10 +362,24 @@ function visitor(parent) {
       case Cursor.TypeRef:
         switch (spelling) {
           case 'ObjectWrap':
-            var somecursor = tu.getCursor(tu.getLocationForOffset(tu.getFile(filename), offset - 1));
-            offset = somecursor.extent.start.fileLocation.offset;
-            var pair = getReplacementRange(spelling, somecursor.extent);
-            replaceNanPrefix(spelling, pair[0], pair[1] - pair[0]);
+            switch (parent.kind) {
+              case Cursor.Constructor:
+                if (parent.kind === Cursor.Constructor) {
+                  var pair = getOtherReplacementRange(spelling, parent.extent);
+                  replaceNanPrefix(spelling, pair[0], pair[1] - pair[0]);
+                }
+                break;
+              case Cursor.CXXVaseSpecifier:
+              case Cursor.DeclRefExpr:
+                var somecursor = tu.getCursor(tu.getLocationForOffset(tu.getFile(filename), offset - 1));
+                offset = somecursor.extent.start.fileLocation.offset;
+                var pair = getReplacementRange(spelling, somecursor.extent);
+                replaceNanPrefix(spelling, pair[0], pair[1] - pair[0]);
+                break;
+              default:
+                var pair = getReplacementRange(spelling, extent);
+                replaceNanPrefix(spelling, pair[0], pair[1] - pair[0]);
+            }
         }
         break;
       case Cursor.VarDecl:
@@ -430,16 +482,16 @@ function visitor(parent) {
             if (this.referenced.semanticParent.spelling === 'Value') {
               replaceTo(this.displayname, 'uint32_t', offset, length);
             }
-            break;
+            break;*/
           case 'ToArrayIndex':
           case 'ToDetailString':
             if (this.referenced.semanticParent.spelling === 'Value') {
-              replaceMaybeZero(this.displayname, offset, length);
+              replaceMaybeSome(spelling, this.extent);
             }
             break;
           case 'GetFunction':
             if (this.referenced.semanticParent.spelling === 'FunctionTemplate') {
-              replaceMaybeZero(this.displayname, offset, length);
+              replaceMaybeSome(spelling, this.extent);
             }
             break;
           case 'GetEndColumn':
@@ -447,22 +499,22 @@ function visitor(parent) {
           case 'GetSourceLine':
           case 'GetStartColumn':
             if (this.referenced.semanticParent.spelling === 'Message') {
-              replaceMaybeZero(this.displayname, offset, length);
+              replaceMaybeSome(spelling, this.extent);
             }
             break;
           case 'NewInstance':
             if (this.referenced.semanticParent.spelling === 'Function' ||
                 this.referenced.semanticParent.spelling === 'ObjectTemplate') {
-              replaceMaybeZero(this.displayname, offset, length);
+              replaceMaybeSome(spelling, this.extent);
             }
             break;
           case 'GetOwnPropertyNames':
           case 'GetPropertyNames':
           case 'ObjectProtoToString':
             if (this.referenced.semanticParent.spelling === 'Object') {
-              replaceMaybeZero(this.displayname, offset, length);
+              replaceMaybeSome(spelling, this.extent);
             }
-            break;*/
+            break;
           case 'CallAsConstructor':
           case 'CallAsFunction':
           case 'Delete':
@@ -483,12 +535,12 @@ function visitor(parent) {
           case 'SetPrototype':
             console.log('original_offset', offset);
             if (this.referenced.semanticParent.spelling === 'Object') {
-              replaceMaybeSome(spelling, this.extent);
+              replaceMaybeSome(spelling, this.extent, true);
             }
             break;
           case 'CloneElementAt':
             if (this.referenced.semanticParent.spelling === 'Array') {
-              replaceMaybeSome(spelling, this.extent);
+              replaceMaybeSome(spelling, this.extent, true);
             }
           case 'NanAssignPersistent':
           case 'NanDisposePersistent':
