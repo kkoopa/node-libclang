@@ -63,44 +63,7 @@ function readAt(filename, offset, length, cb) {
   }
 }
 
-function replacer(pattern, replacement, offset, length, matchgroup, cb) {
-/*  if (visited[offset]) {
-    if (cb) cb(false);
-    return;
-  }
-  visited[offset] = true;*/
-  pending_patches++;
-  //console.log('increasing pending patches to: ', pending_patches);
-  //console.log('because of offset: ', offset);
-  readAt(filename, offset, length, function (err, s) {
-    if (err) {
-      if (cb) {
-        cb(err);
-      } else {
-        throw err;
-      }
-    }
-    var re = new RegExp(pattern);
-    var org = re.exec(s);
-    if (org) {
-      var temp = org[matchgroup ? matchgroup : 0].replace(pattern, replacement);
-      patches.push({
-        offset: offset + s.indexOf(org[matchgroup ? matchgroup : 0]),
-        delta: temp.length - org[matchgroup ? matchgroup : 0].length,
-        original: org[matchgroup ? matchgroup : 0],
-        replacement: temp
-      });
-    }
-    //console.log('pending patches: ', pending_patches - 1);
-    if (--pending_patches === 0) {
-      emitter.emit('done');
-    }
-    //console.log([offset, temp.length - s.length, s, temp].join('\n'));
-    if (cb) cb();
-  });
-}
-
-function replacer2(replacement, offset, length, cb) {
+function replacer(replacement, offset, length, cb) {
   pending_patches++;
   if (length === 0) {
     patches.push({
@@ -166,7 +129,7 @@ function replaceTo(name, type, extent, cb) {
         if (operator_token.kind === Token.Punctuation) {
           paren_offset = paren_token.location.fileLocation.offset;
           replacement = ['NanTo<', type, '>(', readAt(filename, start_offset, operator_token.location.fileLocation.offset - start_offset)].join('');
-          replacer2(replacement, start_offset, paren_offset + 1 - start_offset, function (err) {
+          replacer(replacement, start_offset, paren_offset + 1 - start_offset, function (err) {
             if (err) {
               if (cb) {
                 cb(err);
@@ -174,7 +137,7 @@ function replaceTo(name, type, extent, cb) {
                 throw err;
               }
             }
-            replacer2('.FromJust()', end_offset, 0, cb);
+            replacer('.FromJust()', end_offset, 0, cb);
           });
           break;
         }
@@ -211,7 +174,7 @@ function replaceToLocal(name, extent, cb) {
         if (operator_token.kind === Token.Punctuation) {
           paren_offset = paren_token.location.fileLocation.offset;
           replacement = ['NanTo<v8::', name, '>(', readAt(filename, start_offset, operator_token.location.fileLocation.offset - start_offset)].join('');
-          replacer2(replacement, start_offset, paren_offset + 1 - start_offset, function (err) {
+          replacer(replacement, start_offset, paren_offset + 1 - start_offset, function (err) {
             if (err) {
               if (cb) {
                 cb(err);
@@ -219,7 +182,7 @@ function replaceToLocal(name, extent, cb) {
                 throw err;
               }
             }
-            replacer2('.ToLocalChecked()', end_offset, 0, cb);
+            replacer('.ToLocalChecked()', end_offset, 0, cb);
           });
           break;
         }
@@ -257,7 +220,7 @@ function replaceMaybe(name, extent, hasargs, cb) {
         if (operator_token.kind === Token.Punctuation) {
           paren_offset = paren_token.location.fileLocation.offset;
           replacement = ['Nan', name, '(', readAt(filename, start_offset, operator_token.location.fileLocation.offset - start_offset), hasargs ? ', ' : ''].join('');
-          replacer2(replacement, start_offset, paren_offset + 1 - start_offset, function (err) {
+          replacer(replacement, start_offset, paren_offset + 1 - start_offset, function (err) {
             if (err) {
               if (cb_) {
                 cb_(err);
@@ -265,7 +228,7 @@ function replaceMaybe(name, extent, hasargs, cb) {
                 throw err;
               }
             }
-            //replacer2('.ToLocalChecked()', end_offset, 0, cb_);
+            //replacer('.ToLocalChecked()', end_offset, 0, cb_);
           });
           break;
         }
@@ -276,65 +239,72 @@ function replaceMaybe(name, extent, hasargs, cb) {
 }
 
 function replaceArgs(replacement, offset, length, cb) {
-  replacer2('info', offset, length, cb);
+  replacer('info', offset, length, cb);
 }
 
-function replaceEquals(offset, length, cb) {
-  /*if (visited[offset]) {
-    if (cb) cb(false);
-    return;
+function replaceEquals(offset, extent, cb) {
+  var tokens = extent.tokenize(tu),
+      length = tokens.length,
+      i = length,
+      name_token,
+      paren_token,
+      operator_token,
+      name_offset,
+      paren_offset,
+      start_offset = extent.start.fileLocation.offset,
+      end_offset = extent.end.fileLocation.offset,
+      replacement;
+
+  for(; i >= 2; i--) {
+    paren_token = tokens.get(i);
+
+    if (!paren_token) {
+      continue;
+    }
+
+    if (paren_token.spelling === '(') {
+      name_token = tokens.get(i - 1);
+      if (name_token.spelling === 'Equals') {
+        operator_token = tokens.get(i - 2);
+        if (operator_token.kind === Token.Punctuation) {
+          paren_offset = paren_token.location.fileLocation.offset;
+          replacement = ['NanEquals(', readAt(filename, start_offset, operator_token.location.fileLocation.offset - start_offset), ', '].join('');
+          replacer(replacement, start_offset, paren_offset + 1 - start_offset, function (err) {
+            if (err) {
+              if (cb) {
+                cb(err);
+              } else {
+                throw err;
+              }
+            }
+            replacer('.FromJust()', end_offset, 0, cb);
+          });
+          break;
+        }
+      }
+    }
   }
-  visited[offset] = true;*/
-  pending_patches++;
-  //console.log('increasing pending patches to: ', pending_patches);
-  //console.log('because of offset: ', offset);
-  readAt(filename, offset, length, function (err, s) {
-    if (err) {
-      if (cb) {
-        cb(err);
-      } else {
-        throw(err);
-      }
-    }
-
-    var re = new RegExp('(.*)\\s*->\\s*Equals\\s*\\(', 'g'),
-        res = re.exec(s);
-
-
-    if (res) {
-      var temp = ['NanEquals(', res[1], ', ', s.slice(re.lastIndex)].join('');
-      patches.push({
-        offset: offset,
-        delta: temp.length - s.length,
-        original: s,
-        replacement: temp
-      });
-      //console.log('pending patches: ', pending_patches - 1);
-      if (--pending_patches === 0) {
-        emitter.emit('done');
-      }
-      //console.log([offset, temp.length - s.length, s, temp].join('\n'));
-    } else {
-      console.log('weird');
-      console.log(s);
-      pending_patches--;
-    }
-
-    if (cb) cb(false);
-  });
+  tokens.dispose();
 }
 
 function replaceNanNew(offset, extent, cb) {
-  replacer2('.ToLocalChecked()', extent.end.fileLocation.offset, 0, cb);
+  replacer('.ToLocalChecked()', extent.end.fileLocation.offset, 0, cb);
 }
 
-function replaceNanNewEmptyString(offset, extent, cb) {
-  replacer2('NanEmptyString', offset, extent.start.fileLocation.offset - offset, cb);
+function replaceNanNewEmptyStringTemplate(extent, cb) {
+  var start = extent.start.fileLocation.offset,
+      end = extent.end.fileLocation.offset;
+
+  replacer('NanEmptyString()', start, end - start, cb);
+}
+
+function replaceNanNewEmptyString(argoffset, extent, cb) {
+  var startoffset = extent.start.fileLocation.offset;
+  replacer('NanEmptyString(', startoffset, argoffset + 2 - startoffset, cb);
 }
 
 function replaceNanPrefix(name, offset, length, cb) {
-  replacer2('Nan' + name, offset, length, cb);
-  //replacer(new RegExp('((?:v8::)?' + name + ')', 'g'), 'Nan$1', offset, length, 1, cb);
+  replacer('Nan' + name, offset, length, cb);
 }
 
 function getReplacementRange(match, extent) {
@@ -498,11 +468,18 @@ function visitor(parent) {
             arg0type = this.definition.type.getArg(0);
             if (this.definition.numArguments === 0
              && this.definition.getTemplateArgumentType(0).declaration.spelling === 'String') {
-              replaceNanNewEmptyString(offset, this.extent);
+              replaceNanNewEmptyStringTemplate(this.extent);
             } else if (this.definition.numArguments > 0
              && arg0type.kind === Type.Pointer
              && (arg0type.pointee.kind === Type.Char_S || arg0type.pointee.kind === Type.Char16)) {
-              replaceNanNew(offset, this.extent);
+              var toklist = this.getArgument(0).extent.tokenize(tu);
+              var token = toklist.get(0);
+              if (token.spelling === '""') {
+                replaceNanNewEmptyString(token.location.fileLocation.offset, this.extent);
+              } else {
+                replaceNanNew(offset, this.extent);
+              }
+              toklist.dispose();
             } else {
               switch (this.definition.getTemplateArgumentType(0).declaration.spelling) {
                 case 'Date':
@@ -515,7 +492,7 @@ function visitor(parent) {
             break;
           case 'Equals':
             if (this.referenced.semanticParent.spelling === 'Value') {
-              //replaceEquals(offset, length);
+              replaceEquals(offset, extent);
             }
             break;
           case 'ToBoolean':
@@ -525,31 +502,26 @@ function visitor(parent) {
           case 'ToObject':
           case 'ToString':
           case 'ToUint32':
-            console.log(spelling, 'called');
             if (this.referenced.semanticParent.spelling === 'Value') {
               replaceToLocal(spelling.substring(2), this.extent);
             }
             break;
           case 'BooleanValue':
-            console.log('BooleanValue called');
             if (this.referenced.semanticParent.spelling === 'Value') {
               replaceTo(spelling, 'bool', this.extent);
             }
             break;
           case 'Int32Value':
-            console.log('Int32Value called');
             if (this.referenced.semanticParent.spelling === 'Value') {
               replaceTo(spelling, 'int32_t', this.extent);
             }
             break;
           case 'IntegerValue':
-            console.log('IntegerValue called');
             if (this.referenced.semanticParent.spelling === 'Value') {
               replaceTo(spelling, 'int64_t', this.extent);
             }
             break;
           case 'Uint32Value':
-            console.log('Uint32Value called');
             if (this.referenced.semanticParent.spelling === 'Value') {
               replaceTo(spelling, 'uint32_t', this.extent);
             }
