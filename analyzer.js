@@ -269,6 +269,28 @@ function getReplacementEnd(match, extent) {
   return returnvalue;
 }
 
+function findback(s) {
+  for (var i = s.length - 1; i >= 0; i--) {
+    for (var j = i; j < s.length; j++) {
+      if (s.substring(j, j + 4) === 'node') {
+        for (var k = j + 5; k < s.length; k++) {
+          switch (s.charAt(k)) {
+            case ' ':
+            case '\t':
+            case '\n':
+            case '\r':
+              continue;
+          }
+          if (s.substring(k, k + 2) === '::') {
+             return i;
+          }
+        }
+      }
+    }
+  }
+  return -1;
+}
+
 function visitor(parent) {
   var self = this,
       extent,
@@ -294,31 +316,20 @@ function visitor(parent) {
       case Cursor.TypeRef:
         switch (spelling) {
           case 'ObjectWrap':
-            /*console.log('**********');
+            console.log('**********');
             console.log('ObjectWrap');
             console.log('offset', offset)
             console.log(parent.spelling);
-            console.log(parent.kind);*/
-            //TODO: FIX THIS
-            /*if (parent.kind === Cursor.CXXBaseSpecifier) {
-              var s = readAt(filename, parent.extent.start.fileLocation.offset, offset);
-              var re = /node\s*::\s*ObjectWrap/mg;
-              var lastIndexOf = -1;
-              var nextStop = 0;
-              var result;
-              while ((result = re.exec(s)) !== null) {
-                console.log(result);
-                lastIndexOf = result.index;
-                re.lastIndex = result.index + 1;
+            console.log(parent.kind);
+            if (parent.kind === Cursor.CXXBaseSpecifier) {
+              var s = readAt(filename, 0, offset);
+              console.log(s);
+              var idx = findback(s);
+              console.log(idx);
+              if (idx !== -1) {
+                offset = idx;
               }
-              console.log('lastIndexOf', lastIndexOf);
-              if (lastIndexOf === -1) {
-                console.log('ASDASDADADASDAS');
-                console.log('old offset', offset);
-                offset = this.semanticParent.extent.start.fileLocation.offset + lastIndexOf;
-                console.log('new offset', offset);
-              }
-            }*/
+            }
             length = endloc.offset - offset;
             replaceNanPrefix(spelling, offset, length);
         }
