@@ -139,12 +139,94 @@ function replacer2(replacement, offset, length, cb) {
   }
 }
 
-function replaceTo(name, to, offset, length, cb) {
-  replacer(new RegExp('(.*)\\s*->\\s*' + name + '\\s*\\(\\s*\\)$', 'g'), 'NanTo<' + to + '>($1).FromJust()', offset, length, cb);
+function replaceTo(name, type, extent, cb) {
+  var tokens = extent.tokenize(tu),
+      length = tokens.length,
+      i = length,
+      name_token,
+      paren_token,
+      operator_token,
+      name_offset,
+      paren_offset,
+      start_offset = extent.start.fileLocation.offset,
+      end_offset = extent.end.fileLocation.offset,
+      replacement;
+
+  for(; i >= 2; i--) {
+    paren_token = tokens.get(i);
+
+    if (!paren_token) {
+      continue;
+    }
+
+    if (paren_token.spelling === '(') {
+      name_token = tokens.get(i - 1);
+      if (name_token.spelling === name) {
+        operator_token = tokens.get(i - 2);
+        if (operator_token.kind === Token.Punctuation) {
+          paren_offset = paren_token.location.fileLocation.offset;
+          replacement = ['NanTo<', type, '>(', readAt(filename, start_offset, operator_token.location.fileLocation.offset - start_offset)].join('');
+          replacer2(replacement, start_offset, paren_offset + 1 - start_offset, function (err) {
+            if (err) {
+              if (cb) {
+                cb(err);
+              } else {
+                throw err;
+              }
+            }
+            replacer2('.FromJust()', end_offset, 0, cb);
+          });
+          break;
+        }
+      }
+    }
+  }
+  tokens.dispose();
 }
 
-function replaceToLocal(name, to, offset, length, cb) {
-  replacer(new RegExp('(.*)\\s*->\\s*' + name + '\\s*\\(\\s*\\)$', 'g'), 'NanTo<' + to + '>($1).ToLocalChecked()', offset, length, cb);
+function replaceToLocal(name, extent, cb) {
+  var tokens = extent.tokenize(tu),
+      length = tokens.length,
+      i = length,
+      name_token,
+      paren_token,
+      operator_token,
+      name_offset,
+      paren_offset,
+      start_offset = extent.start.fileLocation.offset,
+      end_offset = extent.end.fileLocation.offset,
+      replacement;
+
+  for(; i >= 2; i--) {
+    paren_token = tokens.get(i);
+
+    if (!paren_token) {
+      continue;
+    }
+
+    if (paren_token.spelling === '(') {
+      name_token = tokens.get(i - 1);
+      if (name_token.spelling === name) {
+        operator_token = tokens.get(i - 2);
+        if (operator_token.kind === Token.Punctuation) {
+          paren_offset = paren_token.location.fileLocation.offset;
+          replacement = ['NanTo<v8::', name, '>(', readAt(filename, start_offset, operator_token.location.fileLocation.offset - start_offset)].join('');
+          replacer2(replacement, start_offset, paren_offset + 1 - start_offset, function (err) {
+            if (err) {
+              if (cb) {
+                cb(err);
+              } else {
+                throw err;
+              }
+            }
+            replacer2('.ToLocalChecked()', end_offset, 0, cb);
+          });
+          break;
+        }
+      }
+    }
+  }
+  tokens.dispose();
 }
 
 function replaceMaybe(name, extent, hasargs, cb) {
@@ -160,14 +242,14 @@ function replaceMaybe(name, extent, hasargs, cb) {
       start_offset = extent.start.fileLocation.offset,
       end_offset = extent.end.fileLocation.offset,
       replacement;
-  console.log('****************************');
-  console.log('start_offset', start_offset);
 
   for(; i >= 2; i--) {
     paren_token = tokens.get(i);
+
     if (!paren_token) {
       continue;
     }
+
     if (paren_token.spelling === '(') {
       name_token = tokens.get(i - 1);
       if (name_token.spelling === name) {
@@ -190,7 +272,6 @@ function replaceMaybe(name, extent, hasargs, cb) {
       }
     }
   }
-
   tokens.dispose();
 }
 
@@ -282,7 +363,7 @@ function getReplacementRange(match, extent) {
     }
 
     spelling = token.spelling;
-    console.log('token', spelling);
+
     if (spelling === match) {
       returnvalue[1] = token.location.fileLocation.offset + spelling.length;
       break;
@@ -327,29 +408,6 @@ function getOtherReplacementRange(match, extent) {
 
   tokenlist.dispose();
   return returnvalue;
-}
-
-
-function findback(s) {
-  for (var i = s.length - 1; i >= 0; i--) {
-    for (var j = i; j < s.length; j++) {
-      if (s.substring(j, j + 4) === 'node') {
-        for (var k = j + 5; k < s.length; k++) {
-          switch (s.charAt(k)) {
-            case ' ':
-            case '\t':
-            case '\n':
-            case '\r':
-              continue;
-          }
-          if (s.substring(k, k + 2) === '::') {
-             return i;
-          }
-        }
-      }
-    }
-  }
-  return -1;
 }
 
 function visitor(parent) {
@@ -465,9 +523,9 @@ function visitor(parent) {
             }*/
             break;
           case 'Equals':
-            /*if (this.referenced.semanticParent.spelling === 'Value') {
-              replaceEquals(offset, length);
-            }*/
+            if (this.referenced.semanticParent.spelling === 'Value') {
+              //replaceEquals(offset, length);
+            }
             break;
           case 'ToBoolean':
           case 'ToInt32':
@@ -476,31 +534,32 @@ function visitor(parent) {
           case 'ToObject':
           case 'ToString':
           case 'ToUint32':
-            /*console.log('ToSomething called');
-            console.log(offset);
-            console.log(readAt(filename, offset, length));
             if (this.referenced.semanticParent.spelling === 'Value') {
-              replaceToLocal(this.displayname, 'v8::' + /To(\w+)$/.exec(this.displayname)[1], offset, length);
-            }*/
+              replaceToLocal(spelling.substring(2), this.extent);
+            }
             break;
           case 'BooleanValue':
+            console.log('BooleanValue called');
             if (this.referenced.semanticParent.spelling === 'Value') {
-              replaceTo(this.displayname, 'bool', offset, length);
+              replaceTo(spelling, 'bool', this.extent);
             }
             break;
           case 'Int32Value':
+            console.log('Int32Value called');
             if (this.referenced.semanticParent.spelling === 'Value') {
-              replaceTo(this.displayname, 'int32_t', offset, length);
+              replaceTo(spelling, 'int32_t', this.extent);
             }
             break;
           case 'IntegerValue':
+            console.log('IntegerValue called');
             if (this.referenced.semanticParent.spelling === 'Value') {
-              replaceTo(this.displayname, 'int64_t', offset, length);
+              replaceTo(spelling, 'int64_t', this.extent);
             }
             break;
           case 'Uint32Value':
+            console.log('Uint32Value called');
             if (this.referenced.semanticParent.spelling === 'Value') {
-              replaceTo(this.displayname, 'uint32_t', offset, length);
+              replaceTo(spelling, 'uint32_t', this.extent);
             }
             break;
           case 'ToArrayIndex':
@@ -553,7 +612,6 @@ function visitor(parent) {
           case 'SetIndexedPropertyHandler':
           case 'SetNamedPropertyHandler':
           case 'SetPrototype':
-            console.log('original_offset', offset);
             if (this.referenced.semanticParent.spelling === 'Object') {
               replaceMaybe(spelling, this.extent, true);
             }
@@ -562,6 +620,7 @@ function visitor(parent) {
             if (this.referenced.semanticParent.spelling === 'Array') {
               replaceMaybe(spelling, this.extent, true);
             }
+            break;
           case 'NanAssignPersistent':
           case 'NanDisposePersistent':
           case 'NanMakeWeakPersistent':
@@ -586,14 +645,14 @@ emitter.on('done', function () {
 
   patches.sort(function (a, b) {
     return a.offset - b.offset;
-  }).filter(function (patch, pos, arr) {
+  })/*.filter(function (patch, pos, arr) {
     return !pos || patch.offset !== arr[pos - 1].offset;
-  });
+  })*/;
 
   for (i = 0, length = patches.length; i < length; i++) {
     patches[i].newoffset = patches[i].offset + total;
     total += patches[i].delta;
-    //console.log(patches[i]);
+    console.log(patches[i]);
   }
 
   fs.readFile(filename, function (err, data) {
