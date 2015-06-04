@@ -19,6 +19,7 @@
 // THE SOFTWARE
 
 exports.Cursor = require('./lib/cursor');
+exports.File = require('./lib/file');
 exports.Index = require('./lib/index');
 exports.Range = require('./lib/range');
 exports.TranslationUnit = require('./lib/translationunit');
