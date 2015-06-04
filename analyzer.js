@@ -347,6 +347,11 @@ function visitor(parent) {
           case 'Persistent':
           case 'TryCatch':
             var pair = getReplacementRange(spelling, extent);
+            if (spelling === 'TryCatch') {
+              --pair[0];
+              --pair[1];
+              console.log(pair);
+            }
             replaceNanPrefix(spelling, pair[0], pair[1] - pair[0]);
         }
         break;
