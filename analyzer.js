@@ -206,7 +206,7 @@ function replaceToLocal(name, extent, cb) {
 
     if (paren_token.spelling === '(') {
       name_token = tokens.get(i - 1);
-      if (name_token.spelling === name) {
+      if (name_token.spelling === 'To' + name) {
         operator_token = tokens.get(i - 2);
         if (operator_token.kind === Token.Punctuation) {
           paren_offset = paren_token.location.fileLocation.offset;
@@ -265,7 +265,7 @@ function replaceMaybe(name, extent, hasargs, cb) {
                 throw err;
               }
             }
-            replacer2('.ToLocalChecked()', end_offset, 0, cb_);
+            //replacer2('.ToLocalChecked()', end_offset, 0, cb_);
           });
           break;
         }
@@ -324,12 +324,12 @@ function replaceEquals(offset, length, cb) {
   });
 }
 
-function replaceNanNew(offset, length, cb) {
-  replacer(/(?:.|[\r\n\s])*/g, '$&.ToLocalChecked()', offset, length, cb);
+function replaceNanNew(offset, extent, cb) {
+  replacer2('.ToLocalChecked()', extent.end.fileLocation.offset, 0, cb);
 }
 
-function replaceNanNewEmptyString(offset, length, cb) {
-  replacer(/(?:.|[\r\n\s])*/g, 'NanEmptyString', offset, length, cb);
+function replaceNanNewEmptyString(offset, extent, cb) {
+  replacer2('NanEmptyString', offset, extent.start.fileLocation.offset - offset, cb);
 }
 
 function replaceNanPrefix(name, offset, length, cb) {
@@ -421,9 +421,10 @@ function visitor(parent) {
       name,
       tok,
       rd,
-      idx;
+      idx,
+      arg0type;
 
-  if (this.location.isFromMainFile) {
+  if (this.location.presumedLocation.filename === filename) {
     extent = this.extent;
     startloc = extent.start.fileLocation;
     endloc = extent.end.fileLocation;
@@ -475,7 +476,7 @@ function visitor(parent) {
             case 'Arguments':
             case 'FunctionCallbackInfo':
             case 'PropertyCallbackInfo':
-              replaceArgs('info', offset, length);
+              //replaceArgs('info', offset, length);
           }
         }
         break;
@@ -494,33 +495,23 @@ function visitor(parent) {
             //insert warning on new line above (unleass already done so)
             break;
           case 'NanNew':
-            /*console.log('*******************');
-            console.log('NanNew found');
-            console.log(this.type.declaration.canonical.spelling);
-            console.log('offset', offset);
-            console.log(this.location.presumedLocation);
-            console.log(endloc);
-            var range = this.spellingNameRange;
-            //console.log(range.start.presumedLocation);
-            //console.log(range.end.presumedLocation);
-            var s = readAt(filename, offset, length);
-            var arg0type = this.definition.type.getArg(0);
+            arg0type = this.definition.type.getArg(0);
             if (this.definition.numArguments === 0
              && this.definition.getTemplateArgumentType(0).declaration.spelling === 'String') {
-              replaceNanNewEmptyString(offset, length);
+              replaceNanNewEmptyString(offset, this.extent);
             } else if (this.definition.numArguments > 0
              && arg0type.kind === Type.Pointer
              && (arg0type.pointee.kind === Type.Char_S || arg0type.pointee.kind === Type.Char16)) {
-              replaceNanNew(offset, length);
+              replaceNanNew(offset, this.extent);
             } else {
               switch (this.definition.getTemplateArgumentType(0).declaration.spelling) {
                 case 'Date':
                 case 'RegExp':
                 case 'String':
-                  replaceNanNew(offset, length);
+                  replaceNanNew(offset, this.extent);
                   break;
               }
-            }*/
+            }
             break;
           case 'Equals':
             if (this.referenced.semanticParent.spelling === 'Value') {
@@ -534,6 +525,7 @@ function visitor(parent) {
           case 'ToObject':
           case 'ToString':
           case 'ToUint32':
+            console.log(spelling, 'called');
             if (this.referenced.semanticParent.spelling === 'Value') {
               replaceToLocal(spelling.substring(2), this.extent);
             }
@@ -645,14 +637,14 @@ emitter.on('done', function () {
 
   patches.sort(function (a, b) {
     return a.offset - b.offset;
-  })/*.filter(function (patch, pos, arr) {
+  }).filter(function (patch, pos, arr) {
     return !pos || patch.offset !== arr[pos - 1].offset;
-  })*/;
+  });
 
   for (i = 0, length = patches.length; i < length; i++) {
     patches[i].newoffset = patches[i].offset + total;
     total += patches[i].delta;
-    console.log(patches[i]);
+    //console.log(patches[i]);
   }
 
   fs.readFile(filename, function (err, data) {
