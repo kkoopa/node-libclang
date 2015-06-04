@@ -13,15 +13,15 @@ var EventEmitter = require('events').EventEmitter,
     Location = libclang.Location,
     index = new Index(true, true),
     filename = 'binding.cc',
-    nodedir = '/usr/local/include/node/',
-    //node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
-    cpp11 = true,
-    args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
-    /*args = [
+    //nodedir = '/usr/local/include/node/',
+    node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
+    cpp11 = false,
+    //args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
+    args = [
       ['-I', node_gyp_header_dir, 'src/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/v8/include/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/uv/include/'].join(''),
-      '-Inode_modules/nan/'],*/
+      '-Inode_modules/nan/'],
     pending_patches = 0,
     patches = [],
     visited = [];
@@ -317,7 +317,7 @@ function visitor(parent) {
       rd,
       idx;
 
-  if (this.location.presumedLocation.filename === filename /*&& !visited[this.location.fileLocation.offset]*/) {
+  if (this.location.isFromMainFile) {
     extent = this.extent;
     startloc = extent.start.fileLocation;
     endloc = extent.end.fileLocation;
@@ -325,8 +325,17 @@ function visitor(parent) {
     length = endloc.offset - offset;
     spelling = this.type.declaration.spelling;
 
+    if (this.kind === Cursor.PreprocessingDirective) {
+      console.log('directive');
+    }
+    if (this.isPreprocessing) {
+      console.log('preprocessing');
+      console.log(this.kind);
+    }
+
     // handle these separately as they mess everything up
     if (tu.getCursor(this.location).kind === Cursor.MacroExpansion) {
+      console.log('expansion');
       return Cursor.Continue;
     }
 
@@ -352,11 +361,11 @@ function visitor(parent) {
           case 'Persistent':
           case 'TryCatch':
             var pair = getReplacementRange(spelling, extent);
-            if (spelling === 'TryCatch') {
+            /*if (spelling === 'TryCatch') {
               --pair[0];
               --pair[1];
               console.log(pair);
-            }
+            }*/
             replaceNanPrefix(spelling, pair[0], pair[1] - pair[0]);
         }
         break;
