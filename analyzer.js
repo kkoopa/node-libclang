@@ -173,8 +173,8 @@ function replaceMaybeSome(name, extent, cb) {
   tokens.dispose();
 }
 
-function replaceArgs(offset, length, cb) {
-  replacer('args', 'info', offset, length, cb);
+function replaceArgs(replacement, offset, length, cb) {
+  replacer2('info', offset, length, cb);
 }
 
 function replaceEquals(offset, length, cb) {
@@ -324,17 +324,10 @@ function visitor(parent) {
       case Cursor.TypeRef:
         switch (spelling) {
           case 'ObjectWrap':
-            console.log('**********');
-            console.log('ObjectWrap');
-            if (parent.kind === Cursor.CXXBaseSpecifier) {
-              var somecursor = tu.getCursor(tu.getLocationForOffset(tu.getFile(filename), offset - 1));
-              offset = somecursor.extent.start.fileLocation.offset;
-              var pair = getReplacementRange(spelling, somecursor.extent);
-              replaceNanPrefix(spelling, pair[0], pair[1] - pair[0]);
-            } else {
-              var pair = getReplacementRange(spelling, extent);
-              replaceNanPrefix(spelling, pair[0], pair[1] - pair[0]);
-            }
+            var somecursor = tu.getCursor(tu.getLocationForOffset(tu.getFile(filename), offset - 1));
+            offset = somecursor.extent.start.fileLocation.offset;
+            var pair = getReplacementRange(spelling, somecursor.extent);
+            replaceNanPrefix(spelling, pair[0], pair[1] - pair[0]);
         }
         break;
       case Cursor.VarDecl:
@@ -342,11 +335,6 @@ function visitor(parent) {
           case 'Persistent':
           case 'TryCatch':
             var pair = getReplacementRange(spelling, extent);
-            /*if (spelling === 'TryCatch') {
-              --pair[0];
-              --pair[1];
-              console.log(pair);
-            }*/
             replaceNanPrefix(spelling, pair[0], pair[1] - pair[0]);
         }
         break;
@@ -357,7 +345,7 @@ function visitor(parent) {
             case 'Arguments':
             case 'FunctionCallbackInfo':
             case 'PropertyCallbackInfo':
-              replaceArgs(offset, length);
+              replaceArgs('info', offset, length);
           }
         }
         break;
