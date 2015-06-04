@@ -102,28 +102,41 @@ function replacer(pattern, replacement, offset, length, matchgroup, cb) {
 
 function replacer2(replacement, offset, length, cb) {
   pending_patches++;
-  readAt(filename, offset, length, function (err, s) {
-    if (err) {
-      if (cb) {
-        cb(err);
-      } else {
-        throw err;
-      }
-    }
+  if (length === 0) {
     patches.push({
       offset: offset,
       delta: replacement.length - length,
-      original: s,
+      original: '',
       replacement: replacement
     });
 
     if (--pending_patches === 0) {
       emitter.emit('done');
     }
+   if (cb) cb();
+  } else {
+    readAt(filename, offset, length, function (err, s) {
+      if (err) {
+        if (cb) {
+          cb(err);
+        } else {
+          throw err;
+        }
+      }
+      patches.push({
+        offset: offset,
+        delta: replacement.length - length,
+        original: s,
+        replacement: replacement
+      });
 
-    if (cb) cb();
-  });
+      if (--pending_patches === 0) {
+        emitter.emit('done');
+      }
 
+      if (cb) cb();
+    });
+  }
 }
 
 function replaceTo(name, to, offset, length, cb) {
@@ -134,11 +147,7 @@ function replaceToLocal(name, to, offset, length, cb) {
   replacer(new RegExp('(.*)\\s*->\\s*' + name + '\\s*\\(\\s*\\)$', 'g'), 'NanTo<' + to + '>($1).ToLocalChecked()', offset, length, cb);
 }
 
-function replaceMaybeZero(name, offset, length, cb) {
-  replacer(new RegExp('(.*)\\s*->\\s*' + name + '\\s*\\(\\s*\\)$', 'g'), 'Nan' + name + '($1)', offset, length, cb);
-}
-
-function replaceMaybeSome(name, extent, hasargs, cb) {
+function replaceMaybe(name, extent, hasargs, cb) {
   var tokens = extent.tokenize(tu),
       length = tokens.length,
       cb_ = cb ? cb : hasargs instanceof Function ? hasargs : undefined,
@@ -149,6 +158,7 @@ function replaceMaybeSome(name, extent, hasargs, cb) {
       name_offset,
       paren_offset,
       start_offset = extent.start.fileLocation.offset,
+      end_offset = extent.end.fileLocation.offset,
       replacement;
   console.log('****************************');
   console.log('start_offset', start_offset);
@@ -163,8 +173,18 @@ function replaceMaybeSome(name, extent, hasargs, cb) {
       if (name_token.spelling === name) {
         operator_token = tokens.get(i - 2);
         if (operator_token.kind === Token.Punctuation) {
+          paren_offset = paren_token.location.fileLocation.offset;
           replacement = ['Nan', name, '(', readAt(filename, start_offset, operator_token.location.fileLocation.offset - start_offset), hasargs ? ', ' : ''].join('');
-          replacer2(replacement, start_offset, paren_token.location.fileLocation.offset + 1 - start_offset, cb_);
+          replacer2(replacement, start_offset, paren_offset + 1 - start_offset, function (err) {
+            if (err) {
+              if (cb_) {
+                cb_(err);
+              } else {
+                throw err;
+              }
+            }
+            replacer2('.ToLocalChecked()', end_offset, 0, cb_);
+          });
           break;
         }
       }
@@ -463,7 +483,7 @@ function visitor(parent) {
               replaceToLocal(this.displayname, 'v8::' + /To(\w+)$/.exec(this.displayname)[1], offset, length);
             }*/
             break;
-          /*case 'BooleanValue':
+          case 'BooleanValue':
             if (this.referenced.semanticParent.spelling === 'Value') {
               replaceTo(this.displayname, 'bool', offset, length);
             }
@@ -482,16 +502,16 @@ function visitor(parent) {
             if (this.referenced.semanticParent.spelling === 'Value') {
               replaceTo(this.displayname, 'uint32_t', offset, length);
             }
-            break;*/
+            break;
           case 'ToArrayIndex':
           case 'ToDetailString':
             if (this.referenced.semanticParent.spelling === 'Value') {
-              replaceMaybeSome(spelling, this.extent);
+              replaceMaybe(spelling, this.extent);
             }
             break;
           case 'GetFunction':
             if (this.referenced.semanticParent.spelling === 'FunctionTemplate') {
-              replaceMaybeSome(spelling, this.extent);
+              replaceMaybe(spelling, this.extent);
             }
             break;
           case 'GetEndColumn':
@@ -499,20 +519,20 @@ function visitor(parent) {
           case 'GetSourceLine':
           case 'GetStartColumn':
             if (this.referenced.semanticParent.spelling === 'Message') {
-              replaceMaybeSome(spelling, this.extent);
+              replaceMaybe(spelling, this.extent);
             }
             break;
           case 'NewInstance':
             if (this.referenced.semanticParent.spelling === 'Function' ||
                 this.referenced.semanticParent.spelling === 'ObjectTemplate') {
-              replaceMaybeSome(spelling, this.extent);
+              replaceMaybe(spelling, this.extent);
             }
             break;
           case 'GetOwnPropertyNames':
           case 'GetPropertyNames':
           case 'ObjectProtoToString':
             if (this.referenced.semanticParent.spelling === 'Object') {
-              replaceMaybeSome(spelling, this.extent);
+              replaceMaybe(spelling, this.extent);
             }
             break;
           case 'CallAsConstructor':
@@ -535,12 +555,12 @@ function visitor(parent) {
           case 'SetPrototype':
             console.log('original_offset', offset);
             if (this.referenced.semanticParent.spelling === 'Object') {
-              replaceMaybeSome(spelling, this.extent, true);
+              replaceMaybe(spelling, this.extent, true);
             }
             break;
           case 'CloneElementAt':
             if (this.referenced.semanticParent.spelling === 'Array') {
-              replaceMaybeSome(spelling, this.extent, true);
+              replaceMaybe(spelling, this.extent, true);
             }
           case 'NanAssignPersistent':
           case 'NanDisposePersistent':
