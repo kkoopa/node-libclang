@@ -325,6 +325,11 @@ function visitor(parent) {
     length = endloc.offset - offset;
     spelling = this.type.declaration.spelling;
 
+    // handle these separately as they mess everything up
+    if (tu.getCursor(this.location).kind === Cursor.MacroExpansion) {
+      return Cursor.Continue;
+    }
+
     switch (this.kind) {
       case Cursor.TypeRef:
         switch (spelling) {
@@ -367,7 +372,8 @@ function visitor(parent) {
         }
         break;
       case Cursor.CallExpr:
-        switch (this.displayname) {
+        spelling = this.spelling;
+        switch (spelling) {
           case 'GetIndexedPropertiesExternalArrayData':
           case 'GetIndexedPropertiesExternalArrayDataLength':
           case 'GetIndexedPropertiesExternalArrayDataType':
@@ -498,6 +504,15 @@ function visitor(parent) {
           case 'SetNamedPropertyHandler':
           case 'SetPrototype':
             if (this.referenced.semanticParent.spelling === 'Object') {
+              console.log(this.semanticParent.semanticParent.kind);
+              console.log(readAt(filename, offset, length));
+              console.log(this.location.fileLocation);
+              console.log(this.location.expansionLocation);
+              var tokens = this.extent.tokenize(tu);
+              for(var i = 0; i < tokens.length; i++) {
+                console.log(tokens.get(i).spelling, tokens.get(i).kind);
+              }
+              tokens.dispose();
               replaceMaybeSome(this.displayname, offset, length);
             }
             break;
