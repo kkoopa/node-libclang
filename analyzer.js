@@ -100,6 +100,31 @@ function replacer(pattern, replacement, offset, length, matchgroup, cb) {
   });
 }
 
+function replacer2(replacement, offset, length, cb) {
+  pending_patches++;
+  readAt(filename, offset, length, function (err, s) {
+    if (err) {
+      if (cb) {
+        cb(err);
+      } else {
+        throw err;
+      }
+    }
+    patches.push({
+      offset: offset,
+      delta: replacement.length - length,
+      original: s,
+      replacement: replacement
+    });
+
+    if (--pending_patches === 0) {
+      emitter.emit('done');
+    }
+
+    if (cb) cb();
+  });
+
+}
 
 function replaceTo(name, to, offset, length, cb) {
   replacer(new RegExp('(.*)\\s*->\\s*' + name + '\\s*\\(\\s*\\)$', 'g'), 'NanTo<' + to + '>($1).FromJust()', offset, length, cb);
@@ -113,48 +138,39 @@ function replaceMaybeZero(name, offset, length, cb) {
   replacer(new RegExp('(.*)\\s*->\\s*' + name + '\\s*\\(\\s*\\)$', 'g'), 'Nan' + name + '($1)', offset, length, cb);
 }
 
-function replaceMaybeSome(name, offset, length, cb) {
-  /*if (visited[offset]) {
-    if (cb) cb(false);
-    return;
+function replaceMaybeSome(name, extent, cb) {
+  var tokens = extent.tokenize(tu),
+      length = tokens.length,
+      i = length,
+      name_token,
+      paren_token,
+      operator_token,
+      name_offset,
+      paren_offset,
+      start_offset = extent.start.fileLocation.offset,
+      replacement;
+  console.log('****************************');
+  console.log('start_offset', start_offset);
+
+  for(; i >= 2; i--) {
+    paren_token = tokens.get(i);
+    if (!paren_token) {
+      continue;
+    }
+    if (paren_token.spelling === '(') {
+      name_token = tokens.get(i - 1);
+      if (name_token.spelling === name) {
+        operator_token = tokens.get(i - 2);
+        if (operator_token.kind === Token.Punctuation) {
+          replacement = ['Nan', name, '(', readAt(filename, start_offset, operator_token.location.fileLocation.offset - start_offset), ', '].join('');
+          replacer2(replacement, start_offset, paren_token.location.fileLocation.offset + 1 - start_offset, cb);
+          break;
+        }
+      }
+    }
   }
-  visited[offset] = true;*/
-  pending_patches++;
-  //console.log('increasing pending patches to: ', pending_patches);
-  //console.log('because of offset: ', offset);
-  readAt(filename, offset, length, function (err, s) {
-    if (err) {
-      if (cb) {
-        cb(err);
-      } else {
-        throw err;
-      }
-    }
 
-    var re = new RegExp('(.*)\\s*->\\s*' + name + '\\s*\\(', 'g'),
-        res = re.exec(s);
-
-    if (res) {
-      var temp = ['Nan', name, '(', res[1], ', ', s.slice(re.lastIndex)].join('');
-      patches.push({
-        offset: offset,
-        delta: temp.length - s.length,
-        original: s,
-        replacement: temp
-      });
-      //console.log('pending patches: ', pending_patches - 1);
-      if (--pending_patches === 0) {
-        emitter.emit('done');
-      }
-      //console.log([offset, temp.length - s.length, s, temp].join('\n'));
-    } else {
-      console.log('weird');
-      console.log(s);
-      pending_patches--;
-    }
-
-    if (cb) cb(false);
-  });
+  tokens.dispose();
 }
 
 function replaceArgs(offset, length, cb) {
@@ -212,32 +228,6 @@ function replaceNanNew(offset, length, cb) {
 
 function replaceNanNewEmptyString(offset, length, cb) {
   replacer(/(?:.|[\r\n\s])*/g, 'NanEmptyString', offset, length, cb);
-}
-
-function replacer2(replacement, offset, length, cb) {
-  pending_patches++;
-  readAt(filename, offset, length, function (err, s) {
-    if (err) {
-      if (cb) {
-        cb(err);
-      } else {
-        throw err;
-      }
-    }
-    patches.push({
-      offset: offset,
-      delta: replacement.length - length,
-      original: s,
-      replacement: replacement
-    });
-
-    if (--pending_patches === 0) {
-      emitter.emit('done');
-    }
-
-    if (cb) cb();
-  });
-
 }
 
 function replaceNanPrefix(name, offset, length, cb) {
@@ -325,17 +315,8 @@ function visitor(parent) {
     length = endloc.offset - offset;
     spelling = this.type.declaration.spelling;
 
-    if (this.kind === Cursor.PreprocessingDirective) {
-      console.log('directive');
-    }
-    if (this.isPreprocessing) {
-      console.log('preprocessing');
-      console.log(this.kind);
-    }
-
     // handle these separately as they mess everything up
     if (tu.getCursor(this.location).kind === Cursor.MacroExpansion) {
-      console.log('expansion');
       return Cursor.Continue;
     }
 
@@ -400,7 +381,7 @@ function visitor(parent) {
             console.log(this.type.declaration.canonical.spelling);
             console.log('offset', offset);
             console.log(this.location.presumedLocation);
-            console.log(endloc);*/
+            console.log(endloc);
             var range = this.spellingNameRange;
             //console.log(range.start.presumedLocation);
             //console.log(range.end.presumedLocation);
@@ -421,12 +402,12 @@ function visitor(parent) {
                   replaceNanNew(offset, length);
                   break;
               }
-            }
+            }*/
             break;
           case 'Equals':
-            if (this.referenced.semanticParent.spelling === 'Value') {
+            /*if (this.referenced.semanticParent.spelling === 'Value') {
               replaceEquals(offset, length);
-            }
+            }*/
             break;
           case 'ToBoolean':
           case 'ToInt32':
@@ -437,12 +418,12 @@ function visitor(parent) {
           case 'ToUint32':
             /*console.log('ToSomething called');
             console.log(offset);
-            console.log(readAt(filename, offset, length));*/
+            console.log(readAt(filename, offset, length));
             if (this.referenced.semanticParent.spelling === 'Value') {
               replaceToLocal(this.displayname, 'v8::' + /To(\w+)$/.exec(this.displayname)[1], offset, length);
-            }
+            }*/
             break;
-          case 'BooleanValue':
+          /*case 'BooleanValue':
             if (this.referenced.semanticParent.spelling === 'Value') {
               replaceTo(this.displayname, 'bool', offset, length);
             }
@@ -493,7 +474,7 @@ function visitor(parent) {
             if (this.referenced.semanticParent.spelling === 'Object') {
               replaceMaybeZero(this.displayname, offset, length);
             }
-            break;
+            break;*/
           case 'CallAsConstructor':
           case 'CallAsFunction':
           case 'Delete':
@@ -512,22 +493,14 @@ function visitor(parent) {
           case 'SetIndexedPropertyHandler':
           case 'SetNamedPropertyHandler':
           case 'SetPrototype':
+            console.log('original_offset', offset);
             if (this.referenced.semanticParent.spelling === 'Object') {
-              console.log(this.semanticParent.semanticParent.kind);
-              console.log(readAt(filename, offset, length));
-              console.log(this.location.fileLocation);
-              console.log(this.location.expansionLocation);
-              var tokens = this.extent.tokenize(tu);
-              for(var i = 0; i < tokens.length; i++) {
-                console.log(tokens.get(i).spelling, tokens.get(i).kind);
-              }
-              tokens.dispose();
-              replaceMaybeSome(this.displayname, offset, length);
+              replaceMaybeSome(spelling, this.extent);
             }
             break;
           case 'CloneElementAt':
             if (this.referenced.semanticParent.spelling === 'Array') {
-              replaceMaybeSome(this.displayname, offset, length);
+              replaceMaybeSome(spelling, this.extent);
             }
           case 'NanAssignPersistent':
           case 'NanDisposePersistent':
@@ -563,23 +536,23 @@ emitter.on('done', function () {
     //console.log(patches[i]);
   }
 
-  fs.readFile(filename, {encoding: 'utf8'}, function (err, data) {
+  fs.readFile(filename, function (err, data) {
     var parts = [];
 
     patches.forEach(function (patch, pos, arr) {
       //console.log(patch.original);
       //console.log(patch.replacement);
       if (pos > 0) {
-        parts.push(data.substring(arr[pos - 1].offset + arr[pos -1].original.length, patch.offset));
+        parts.push(data.slice(arr[pos - 1].offset + arr[pos -1].original.length, patch.offset));
       } else {
-        parts.push(data.substring(0, patch.offset));
+        parts.push(data.slice(0, patch.offset));
       }
-      parts.push(patch.replacement);
+      parts.push(new Buffer(patch.replacement));
     });
 
-    parts.push(data.substring(patches[patches.length -1].offset + patches[patches.length - 1].original.length, data.length));
+    parts.push(data.slice(patches[patches.length -1].offset + patches[patches.length - 1].original.length, data.length));
 
-    fs.writeFile(filename + '.new', parts.join(''), function (err) {
+    fs.writeFile(filename + '.new', Buffer.concat(parts), function (err) {
       if (err) throw err;
     });
   });
