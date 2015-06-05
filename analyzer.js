@@ -13,15 +13,15 @@ var EventEmitter = require('events').EventEmitter,
     Location = libclang.Location,
     index = new Index(true, true),
     filename = 'binding.cc',
-    //nodedir = '/usr/local/include/node/',
+    nodedir = '/usr/local/include/node/',
     node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
-    cpp11 = false,
-    //args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
-    args = [
+    cpp11 = true,
+    args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
+    /*args = [
       ['-I', node_gyp_header_dir, 'src/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/v8/include/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/uv/include/'].join(''),
-      '-Inode_modules/nan/'],
+      '-Inode_modules/nan/'],*/
     pending_patches = 0,
     patches = [],
     visited = [];
@@ -413,13 +413,11 @@ function visitor(parent) {
           case 'ObjectWrap':
             switch (parent.kind) {
               case Cursor.Constructor:
-                if (parent.kind === Cursor.Constructor) {
-                  var pair = getOtherReplacementRange(spelling, parent.extent);
-                  replaceNanPrefix(spelling, pair[0], pair[1] - pair[0]);
-                }
-                break;
-              case Cursor.CXXVaseSpecifier:
               case Cursor.DeclRefExpr:
+                var pair = getOtherReplacementRange(spelling, parent.extent);
+                replaceNanPrefix(spelling, pair[0], pair[1] - pair[0]);
+                break;
+              case Cursor.CXXBaseSpecifier:
                 var somecursor = tu.getCursor(tu.getLocationForOffset(tu.getFile(filename), offset - 1));
                 offset = somecursor.extent.start.fileLocation.offset;
                 var pair = getReplacementRange(spelling, somecursor.extent);
