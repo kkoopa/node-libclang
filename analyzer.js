@@ -307,6 +307,23 @@ function replaceNanPrefix(name, offset, length, cb) {
   replacer('Nan' + name, offset, length, cb);
 }
 
+function replaceObjectWrapHandle(name, extent, cb) {
+  var tokenlist = extent.tokenize(tu),
+      token = tokenlist.get(2),
+      offset = extent.start.fileLocation.offset;
+
+  replacer([token.spelling, '->handle()'].join(''), offset, extent.end.fileLocation.offset - offset);
+  tokenlist.dispose();
+}
+
+function replaceMakeWeak(arg0, arg1, extent, cb) {
+  var offset = extent.start.fileLocation.offset,
+      arg0start = arg0.extent.start.fileLocation;
+      arg0end = arg0.extent.end.fileLocation;
+
+  replacer([readAt(filename, arg0start.offset, arg0end.offset - arg0start.offset), '->SetWeak('].join(''), offset, arg1.location.fileLocation.offset - offset);
+}
+
 function insertRemovalWarning(offset, extent, cb) {
  var s = readAt(filename, offset, extent.end.fileLocation.offset),
      c,
@@ -600,10 +617,14 @@ function visitor(parent) {
             }
             break;
           case 'NanAssignPersistent':
+            break;
           case 'NanDisposePersistent':
+            break;
           case 'NanMakeWeakPersistent':
+            replaceMakeWeak(this.getArgument(0), this.getArgument(1), this.extent);
+            break;
           case 'NanObjectWrapHandle':
-            console.log(this.spelling);
+            //replaceObjectWrapHandle(spelling, this.extent);
             break;
         }
     }
