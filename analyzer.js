@@ -307,6 +307,21 @@ function replaceNanPrefix(name, offset, length, cb) {
   replacer('Nan' + name, offset, length, cb);
 }
 
+function insertRemovalWarning(offset, extent, cb) {
+ var s = readAt(filename, offset, extent.end.fileLocation.offset),
+     c,
+     i,
+     length;
+
+ for (i = 0, length = s.length; i < length; i++) {
+     c = s.charAt(i);
+   if (c !== ' ' && c !== '\t') {
+     break;
+   }
+ }
+ replacer([s.substring(0, i), '/* ERROR: Rewrite using Buffer */\n'].join(''), offset, 0, cb);
+}
+
 function getReplacementRange(match, extent) {
   var tokenlist = extent.tokenize(tu),
       i,
@@ -460,7 +475,8 @@ function visitor(parent) {
           case 'HasIndexedPropertiesInPixelData':
           case 'SetIndexedPropertiesToExternalArrayData':
           case 'SetIndexedPropertiesToPixelData':
-            //insert warning on new line above (unleass already done so)
+            var loc = this.location.fileLocation;
+            insertRemovalWarning(loc.offset - loc.column + 1, this.extent);
             break;
           case 'NanNew':
             arg0type = this.definition.type.getArg(0);
