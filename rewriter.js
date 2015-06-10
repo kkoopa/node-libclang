@@ -18,6 +18,7 @@ var offsets = [];
 
 /* TODO: this is too messy and unnecessarily complicated */
 function getDelta(offset) {
+	'use strict';
 	var length = offsets.length, idx;
 
 	if (length === 0) {
@@ -28,8 +29,10 @@ function getDelta(offset) {
 	return offsets[idx][1];
 }
 
-/* TODO: this is too messy and unnecessarily complicated */
+/* TODO: this is way too messy and unnecessarily complicated */
 function setDelta(offset, delta) {
+	'use strict';
+
 	var length = offsets.length, idx;
 
 	if (length === 0) {
@@ -51,33 +54,31 @@ function setDelta(offset, delta) {
 var source = 'NanAssignPersistent(persistent, args[0]);'
 
 function makeDelete(offset, length) {
-  'use strict';
+	'use strict';
 
-  return function (source) {
-    var result, delta = getDelta(offset);
-    setDelta(offset, delta - length);
-    result = source.substring(0, offset + delta) + source.substring(offset + delta + length);
-    return result;
-  };
+	return function (source) {
+		var delta = getDelta(offset);
+		setDelta(offset, delta - length);
+		return source.substring(0, offset + delta) + source.substring(offset + delta + length);
+	};
 }
 
 function makeInsert(offset, string) {
-  'use strict';
+	'use strict';
 
-  return function (source) {
-    var result, delta = getDelta(offset);
-    setDelta(offset, delta + string.length);
-    result = source.substring(0, offset + delta) + string + source.substring(offset + delta);
-    return result;
-  };
+	return function (source) {
+		var delta = getDelta(offset);
+		setDelta(offset, delta + string.length);
+		return source.substring(0, offset + delta) + string + source.substring(offset + delta);
+	};
 }
 
 function makeReplace(offset, length, string) {
-  'use strict';
+	'use strict';
 
-  return function (source) {
-    return makeInsert(offset, string)(makeDelete(offset, length)(source));
-  };
+	return function (source) {
+		return makeInsert(offset, string)(makeDelete(offset, length)(source));
+	};
 }
 
 source = makeDelete(0, 'NanAssignPersistent('.length)(source);
