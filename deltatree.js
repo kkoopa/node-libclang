@@ -49,10 +49,6 @@ var DeltaTree = function () {
 
 		if (this.isLeaf) {
 			if (!this.isFull) {
-				console.log('new value', {offset: offset, delta: delta});
-				console.log('old values', this.values);
-				console.log('i', i);
-				console.log('n', n);
 				if (i !== n) {
 					for (j = n; j > i; j--) {
 						this.values[j] = this.values[j - 1];
@@ -60,14 +56,10 @@ var DeltaTree = function () {
 				}
 
 				this.values[i] = {offset: offset, delta: delta};
-				console.log('new values', this.values);
 				this.numValuesUsed++;
 
 				return false;
 			}
-
-			console.log('leaf was full');
-			console.log('splitting');
 
 			result = this.doSplit();
 
@@ -76,8 +68,6 @@ var DeltaTree = function () {
 			} else {
 				result.rhs.doInsertion(offset, delta);
 			}
-
-			console.log('split result', result.lhs.values, result.rhs.values);
 
 			return result;
 		}
@@ -89,11 +79,6 @@ var DeltaTree = function () {
 		}
 
 		if (!this.isFull) {
-			console.log('new children', result.lhs, result.rhs);
-			console.log('old children', this.children);
-			console.log('i', i);
-			console.log('n', n);
-
 			if (i !== n) {
 				for (j = n; j > i + 1; j--) {
 					this.children[j] = this.children[j - 1];
@@ -102,8 +87,6 @@ var DeltaTree = function () {
 
 			this.children[i] = result.lhs;
 			this.children[i + 1] = result.rhs;
-
-			console.log('real new children', this.children);
 
 			if (i !== n) {
 				for (j = n; j > i; j--) {
@@ -177,14 +160,10 @@ var DeltaTree = function () {
 			throw 'why split a non-full node?';
 		}
 
-		console.log('split node');
-
 		if (this instanceof DeltaTreeInteriorNode) {
-			console.log('split interior node');
 			newNode = new DeltaTreeInteriorNode();
 			newNode.children = this.children.slice(0, this.order);
 		} else {
-			console.log('split leaf node');
 			newNode = new DeltaTreeNode();
 		}
 
@@ -221,10 +200,6 @@ var DeltaTree = function () {
 	this.getDeltaAt = function (offset) {
 		'use strict';
 
-		console.log(this);
-
-		console.log(this.root);
-
 		var node = this.root, result = 0, numValsGreater, n, val, i;
 
 		while (true) {
@@ -238,7 +213,6 @@ var DeltaTree = function () {
 			}
 
 			if (!(node instanceof DeltaTreeInteriorNode)) {
-				console.log('found leaf');
 				return result;
 			}
 
@@ -260,13 +234,9 @@ var DeltaTree = function () {
 
 		if (!delta) { throw 'noop'; }
 
-		console.log('inserting', {offset: offset, delta: delta});
 		result = this.root.doInsertion(offset, delta);
 		if (result) {
-			console.log('updating root');
-			console.log('old children', this.root.children);
 			this.root = new DeltaTreeInteriorNode(result);
-			console.log('new children', this.root.children);
 		}
 	};
 

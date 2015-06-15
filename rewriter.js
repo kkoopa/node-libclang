@@ -26,14 +26,12 @@ var Rewriter = function (source) {
 	}
 
 	this.offsets = new DeltaTree();
-	console.log(JSON.stringify('created DeltaTree', this.offsets));
 	this.operations = [];
 	this.source = source;
 
 	this.getDelta = function (offset) {
 		'use strict';
 
-		console.log('offsets', this.offsets);
 		return this.offsets.getDeltaAt(offset);
 	};
 
@@ -42,39 +40,43 @@ var Rewriter = function (source) {
 		this.offsets.addDelta(offset, delta);
 	};
 
-	this.makeDelete = function (offset, length) {
+	this.getMappedOffset = function (offset, after_inserts) {
+		'use strict';
+		return offset + this.getDelta(offset + (after_inserts ? 1 : 0));
+	};
+
+	this.makeDelete = function (offset, length, after_inserts) {
 		'use strict';
 
 		var self = this;
 
 		this.operations.push({op: function () {
-			var delta = self.getDelta(offset);
+			var adjusted_offset = self.getMappedOffset(offset, after_inserts);
 			self.setDelta(offset, -length);
-			self.source = Buffer.concat([self.source.slice(0, offset + delta), self.source.slice(offset + delta + length)]);
+			self.source = Buffer.concat([self.source.slice(0, adjusted_offset), self.source.slice(adjusted_offset + length)]);
 		}, offset: offset});
 	};
 
-	this.makeInsert = function (offset, string) {
+	this.makeInsert = function (offset, string, after_inserts) {
 		'use strict';
 		var self = this;
 
 		this.operations.push({op: function () {
-			//console.log('insert');
-			var delta = self.getDelta(offset);
+			var adjusted_offset = self.getMappedOffset(offset, after_inserts);
 			self.setDelta(offset, string.length);
-			self.source = Buffer.concat([self.source.slice(0, offset + delta), new Buffer(string), self.source.slice(offset + delta)]);
+			self.source = Buffer.concat([self.source.slice(0, adjusted_offset), new Buffer(string), self.source.slice(adjusted_offset)]);
 		}, offset: offset});
 	};
 
-	this.makeReplace = function (offset, length, string) {
+	this.makeReplace = function (offset, length, string, after_inserts) {
 		'use strict';
 
-		this.makeDelete(offset, length);
-		this.makeInsert(offset, string);
+		this.makeDelete(offset, length, after_inserts);
+		this.makeInsert(offset, string, after_inserts);
 	};
 
 	this.execute = function () {
-		this.operations/*.sort(function (a, b) { return a.offset - b.offset})*/.forEach(function (val) {
+		this.operations.forEach(function (val) {
 			val.op();
 		});
 	};

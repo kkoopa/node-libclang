@@ -62,32 +62,32 @@ function readAt(filename, offset, length, cb) {
   }
 }
 
-function replacer(replacement, offset, length, cb) {
+function replacer(replacement, offset, length, after_inserts, cb) {
   if (length === 0) {
     if (replacement.length > 0) {
-      rewriter.makeInsert(offset, replacement);
+      rewriter.makeInsert(offset, replacement, after_inserts);
     }
 
    if (cb) cb();
   } else if (replacement.length === 0) {
     if (length > 0) {
-      rewriter.makeDelete(offset, length);
+      rewriter.makeDelete(offset, length, after_inserts);
     }
 
    if (cb) cb();
   } else {
-    rewriter.makeReplace(offset, length, replacement);
+    rewriter.makeReplace(offset, length, replacement, after_inserts);
 
     if (cb) cb();
   }
 }
 
-function inserter(string, offset, cb) {
-  replacer(string, offset, 0, cb);
+function inserter(string, offset, after_inserts, cb) {
+  replacer(string, offset, 0, after_inserts, cb);
 }
 
-function deleter(offset, length, cb) {
-  replacer('', offset, length, cb);
+function deleter(offset, length, after_inserts, cb) {
+  replacer('', offset, length, after_inserts, cb);
 }
 
 function replaceTo(name, type, extent, cb) {
@@ -271,7 +271,8 @@ function replaceNanNewEmptyString(argoffset, extent, cb) {
 }
 
 function replaceNanPrefix(name, offset, length, cb) {
-  inserter('Nan', offset, cb);
+  deleter(offset, length, cb);
+  inserter('Nan' + name, offset, cb);
 }
 
 function replaceObjectWrapHandle(name, extent, cb) {
@@ -280,7 +281,7 @@ function replaceObjectWrapHandle(name, extent, cb) {
       offset = extent.start.fileLocation.offset,
       tokenOffset = token.location.fileLocation.offset;
 
-  deleter(offset, tokenOffset - offset);
+  deleter(offset, tokenOffset - offset, true);
   inserter('->handle(', tokenOffset + token.spelling.length);
   tokenlist.dispose();
 }
