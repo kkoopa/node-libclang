@@ -1,4 +1,8 @@
+var DeltaTree = require('./deltatree');
+
 Array.prototype.bisect_left = function (val, comparator) {
+	'use strict';
+
 	var lo = 0, mid, hi = this.length, cmp = comparator ? comparator : function (a, b) { return a - b; };
 
 	while (lo < hi) {
@@ -14,74 +18,75 @@ Array.prototype.bisect_left = function (val, comparator) {
 	return lo;
 };
 
-var offsets = [];
-
-/* TODO: this is too messy and unnecessarily complicated */
-function getDelta(offset) {
+var Rewriter = function (source) {
 	'use strict';
-	var length = offsets.length, idx;
 
-	if (length === 0) {
-		return 0;
+	if (!(this instanceof Rewriter)) {
+		return new Rewriter(source);
 	}
-	idx = offsets.bisect_left(offset, function (a, b) { return a[0] - b; }) - 1;
-	idx = idx === -1 ? 0 : idx;
-	return offsets[idx][1];
-}
 
-/* TODO: this is way too messy and unnecessarily complicated */
-function setDelta(offset, delta) {
-	'use strict';
+	this.offsets = new DeltaTree();
+	console.log(JSON.stringify('created DeltaTree', this.offsets));
+	this.operations = [];
+	this.source = source;
 
-	var length = offsets.length, idx;
+	this.getDelta = function (offset) {
+		'use strict';
 
-	if (length === 0) {
-		offsets.push([offset, delta]);
-	} else {
-		idx = offsets.bisect_left(offset, function (a, b) { return a[0] - b; });
-		if (idx < length && offsets[idx][0] === offset) {
-			if (idx > 0) {
-				offsets[idx][1] = delta + offsets[idx][1] - offsets[idx - 1][1];
-			} else {
-				offsets[idx][1] = delta + offsets[idx][1];
-			}
-		} else {
-			offsets.push([offset, delta]);
-		}
-	}
-}
-
-var source = 'NanAssignPersistent(persistent, args[0]);'
-
-function makeDelete(offset, length) {
-	'use strict';
-
-	return function (source) {
-		var delta = getDelta(offset);
-		setDelta(offset, delta - length);
-		return source.substring(0, offset + delta) + source.substring(offset + delta + length);
+		console.log('offsets', this.offsets);
+		return this.offsets.getDeltaAt(offset);
 	};
-}
 
-function makeInsert(offset, string) {
-	'use strict';
-
-	return function (source) {
-		var delta = getDelta(offset);
-		setDelta(offset, delta + string.length);
-		return source.substring(0, offset + delta) + string + source.substring(offset + delta);
+	this.setDelta = function (offset, delta) {
+		'use strict';
+		this.offsets.addDelta(offset, delta);
 	};
-}
 
-function makeReplace(offset, length, string) {
-	'use strict';
+	this.makeDelete = function (offset, length) {
+		'use strict';
 
-	return function (source) {
-		return makeInsert(offset, string)(makeDelete(offset, length)(source));
+		var self = this;
+
+		this.operations.push({op: function () {
+			var delta = self.getDelta(offset);
+			self.setDelta(offset, -length);
+			self.source = Buffer.concat([self.source.slice(0, offset + delta), self.source.slice(offset + delta + length)]);
+		}, offset: offset});
 	};
-}
 
-source = makeDelete(0, 'NanAssignPersistent('.length)(source);
-source = makeReplace('NanAssignPersistent(persistent'.length, ', '.length, '.Reset(')(source);
-source = makeReplace('NanAssignPersistent(persistent, '.length, 'args'.length, 'info')(source);
-console.log(source);
+	this.makeInsert = function (offset, string) {
+		'use strict';
+		var self = this;
+
+		this.operations.push({op: function () {
+			//console.log('insert');
+			var delta = self.getDelta(offset);
+			self.setDelta(offset, string.length);
+			self.source = Buffer.concat([self.source.slice(0, offset + delta), new Buffer(string), self.source.slice(offset + delta)]);
+		}, offset: offset});
+	};
+
+	this.makeReplace = function (offset, length, string) {
+		'use strict';
+
+		this.makeDelete(offset, length);
+		this.makeInsert(offset, string);
+	};
+
+	this.execute = function () {
+		this.operations/*.sort(function (a, b) { return a.offset - b.offset})*/.forEach(function (val) {
+			val.op();
+		});
+	};
+};
+
+module.exports = Rewriter;
+
+/*
+var rewriter = new Rewriter(new Buffer('NanAssignPersistent(persistent, args[0]);'));
+rewriter.makeDelete(0, 'NanAssignPersistent('.length);
+rewriter.makeReplace('NanAssignPersistent(persistent'.length, ', '.length, '.Reset(');
+rewriter.makeReplace('NanAssignPersistent(persistent, '.length, 'args'.length, 'info');
+rewriter.execute();
+console.log(rewriter.source.toString());
+*/

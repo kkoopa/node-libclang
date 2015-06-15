@@ -13,18 +13,17 @@ var EventEmitter = require('events').EventEmitter,
     Location = libclang.Location,
     index = new Index(true, true),
     filename = 'binding.cc',
-    nodedir = '/usr/local/include/node/',
+    Rewriter = require('./rewriter'),
+    rewriter = new Rewriter(fs.readFileSync(filename)),
+    //nodedir = '/usr/local/include/node/',
     node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
-    cpp11 = true,
-    args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
-    /*args = [
+    cpp11 = false,
+    //args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
+    args = [
       ['-I', node_gyp_header_dir, 'src/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/v8/include/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/uv/include/'].join(''),
-      '-Inode_modules/nan/'],*/
-    pending_patches = 0,
-    patches = [],
-    visited = [];
+      '-Inode_modules/nan/'];
 
 if (cpp11) {
   args.push('-std=c++11');
@@ -64,42 +63,31 @@ function readAt(filename, offset, length, cb) {
 }
 
 function replacer(replacement, offset, length, cb) {
-  pending_patches++;
   if (length === 0) {
-    patches.push({
-      offset: offset,
-      delta: replacement.length - length,
-      original: '',
-      replacement: replacement
-    });
-
-    if (--pending_patches === 0) {
-      emitter.emit('done');
+    if (replacement.length > 0) {
+      rewriter.makeInsert(offset, replacement);
     }
+
+   if (cb) cb();
+  } else if (replacement.length === 0) {
+    if (length > 0) {
+      rewriter.makeDelete(offset, length);
+    }
+
    if (cb) cb();
   } else {
-    readAt(filename, offset, length, function (err, s) {
-      if (err) {
-        if (cb) {
-          cb(err);
-        } else {
-          throw err;
-        }
-      }
-      patches.push({
-        offset: offset,
-        delta: replacement.length - length,
-        original: s,
-        replacement: replacement
-      });
+    rewriter.makeReplace(offset, length, replacement);
 
-      if (--pending_patches === 0) {
-        emitter.emit('done');
-      }
-
-      if (cb) cb();
-    });
+    if (cb) cb();
   }
+}
+
+function inserter(string, offset, cb) {
+  replacer(string, offset, 0, cb);
+}
+
+function deleter(offset, length, cb) {
+  replacer('', offset, length, cb);
 }
 
 function replaceTo(name, type, extent, cb) {
@@ -111,6 +99,7 @@ function replaceTo(name, type, extent, cb) {
       operator_token,
       name_offset,
       paren_offset,
+      operator_offset,
       start_offset = extent.start.fileLocation.offset,
       end_offset = extent.end.fileLocation.offset,
       replacement;
@@ -128,17 +117,10 @@ function replaceTo(name, type, extent, cb) {
         operator_token = tokens.get(i - 2);
         if (operator_token.kind === Token.Punctuation) {
           paren_offset = paren_token.location.fileLocation.offset;
-          replacement = ['NanTo<', type, '>(', readAt(filename, start_offset, operator_token.location.fileLocation.offset - start_offset)].join('');
-          replacer(replacement, start_offset, paren_offset + 1 - start_offset, function (err) {
-            if (err) {
-              if (cb) {
-                cb(err);
-              } else {
-                throw err;
-              }
-            }
-            replacer('.FromJust()', end_offset, 0, cb);
-          });
+          operator_offset = operator_token.location.fileLocation.offset;
+          inserter(['NanTo<', type, '>('].join(''), start_offset);
+          deleter(operator_offset, paren_offset + 1 - operator_offset);
+          inserter('.FromJust()', end_offset);
           break;
         }
       }
@@ -156,6 +138,7 @@ function replaceToLocal(name, extent, cb) {
       operator_token,
       name_offset,
       paren_offset,
+      operator_offset,
       start_offset = extent.start.fileLocation.offset,
       end_offset = extent.end.fileLocation.offset,
       replacement;
@@ -173,17 +156,10 @@ function replaceToLocal(name, extent, cb) {
         operator_token = tokens.get(i - 2);
         if (operator_token.kind === Token.Punctuation) {
           paren_offset = paren_token.location.fileLocation.offset;
-          replacement = ['NanTo<v8::', name, '>(', readAt(filename, start_offset, operator_token.location.fileLocation.offset - start_offset)].join('');
-          replacer(replacement, start_offset, paren_offset + 1 - start_offset, function (err) {
-            if (err) {
-              if (cb) {
-                cb(err);
-              } else {
-                throw err;
-              }
-            }
-            replacer('.ToLocalChecked()', end_offset, 0, cb);
-          });
+          operator_offset = operator_token.location.fileLocation.offset;
+          inserter(['NanTo<v8::', name, '>('].join(''), start_offset);
+          deleter(operator_offset, paren_offset + 1 - operator_offset);
+          replacer(').ToLocalChecked()', operator_offset, 1);
           break;
         }
       }
@@ -202,6 +178,7 @@ function replaceMaybe(name, extent, hasargs, cb) {
       operator_token,
       name_offset,
       paren_offset,
+      operator_offset,
       start_offset = extent.start.fileLocation.offset,
       end_offset = extent.end.fileLocation.offset,
       replacement;
@@ -219,17 +196,13 @@ function replaceMaybe(name, extent, hasargs, cb) {
         operator_token = tokens.get(i - 2);
         if (operator_token.kind === Token.Punctuation) {
           paren_offset = paren_token.location.fileLocation.offset;
-          replacement = ['Nan', name, '(', readAt(filename, start_offset, operator_token.location.fileLocation.offset - start_offset), hasargs ? ', ' : ''].join('');
-          replacer(replacement, start_offset, paren_offset + 1 - start_offset, function (err) {
-            if (err) {
-              if (cb_) {
-                cb_(err);
-              } else {
-                throw err;
-              }
-            }
-            //replacer('.ToLocalChecked()', end_offset, 0, cb_);
-          });
+          operator_offset = operator_token.location.fileLocation.offset;
+          inserter(['Nan', name, '('].join(''), start_offset);
+          deleter(operator_offset, paren_offset + 1 - operator_offset);
+          if (hasargs) {
+            inserter(', ', operator_offset);
+          }
+          inserter('.ToLocalChecked()', end_offset);
           break;
         }
       }
@@ -239,7 +212,7 @@ function replaceMaybe(name, extent, hasargs, cb) {
 }
 
 function replaceArgs(replacement, offset, length, cb) {
-  replacer('info', offset, length, cb);
+  //replacer('info', offset, length, cb);
 }
 
 function replaceEquals(offset, extent, cb) {
@@ -251,6 +224,7 @@ function replaceEquals(offset, extent, cb) {
       operator_token,
       name_offset,
       paren_offset,
+      operator_offset,
       start_offset = extent.start.fileLocation.offset,
       end_offset = extent.end.fileLocation.offset,
       replacement;
@@ -268,17 +242,10 @@ function replaceEquals(offset, extent, cb) {
         operator_token = tokens.get(i - 2);
         if (operator_token.kind === Token.Punctuation) {
           paren_offset = paren_token.location.fileLocation.offset;
-          replacement = ['NanEquals(', readAt(filename, start_offset, operator_token.location.fileLocation.offset - start_offset), ', '].join('');
-          replacer(replacement, start_offset, paren_offset + 1 - start_offset, function (err) {
-            if (err) {
-              if (cb) {
-                cb(err);
-              } else {
-                throw err;
-              }
-            }
-            replacer('.FromJust()', end_offset, 0, cb);
-          });
+          operator_offset = operator_token.location.fileLocation.offset;
+          inserter('NanEquals(', start_offset);
+          replacer(', ', operator_offset, paren_offset + 1 - operator_offset);
+          inserter('.FromJust()', end_offset);
           break;
         }
       }
@@ -304,15 +271,17 @@ function replaceNanNewEmptyString(argoffset, extent, cb) {
 }
 
 function replaceNanPrefix(name, offset, length, cb) {
-  replacer('Nan' + name, offset, length, cb);
+  inserter('Nan', offset, cb);
 }
 
 function replaceObjectWrapHandle(name, extent, cb) {
   var tokenlist = extent.tokenize(tu),
       token = tokenlist.get(2),
-      offset = extent.start.fileLocation.offset;
+      offset = extent.start.fileLocation.offset,
+      tokenOffset = token.location.fileLocation.offset;
 
-  replacer([token.spelling, '->handle()'].join(''), offset, extent.end.fileLocation.offset - offset);
+  deleter(offset, tokenOffset - offset);
+  inserter('->handle(', tokenOffset + token.spelling.length);
   tokenlist.dispose();
 }
 
@@ -321,7 +290,8 @@ function replaceMakeWeak(arg0, arg1, extent, cb) {
       arg0start = arg0.extent.start.fileLocation;
       arg0end = arg0.extent.end.fileLocation;
 
-  replacer([readAt(filename, arg0start.offset, arg0end.offset - arg0start.offset), '->SetWeak('].join(''), offset, arg1.location.fileLocation.offset - offset);
+//  replacer([readAt(filename, arg0start.offset, arg0end.offset - arg0start.offset), '->SetWeak('].join(''), offset, arg1.location.fileLocation.offset - offset);
+//  replacer(['NanPersistent<v8::Value>(', readAt(filename, arg0start.offset, arg0end.offset - arg0start.offset), ')->SetWeak('].join(''), offset, arg1.location.fileLocation.offset - offset);
 }
 
 function insertRemovalWarning(offset, extent, cb) {
@@ -476,7 +446,7 @@ function visitor(parent) {
             case 'Arguments':
             case 'FunctionCallbackInfo':
             case 'PropertyCallbackInfo':
-              //replaceArgs('info', offset, length);
+              replaceArgs('info', offset, length);
           }
         }
         break;
@@ -624,7 +594,7 @@ function visitor(parent) {
             replaceMakeWeak(this.getArgument(0), this.getArgument(1), this.extent);
             break;
           case 'NanObjectWrapHandle':
-            //replaceObjectWrapHandle(spelling, this.extent);
+            replaceObjectWrapHandle(spelling, this.extent);
             break;
         }
     }
@@ -637,41 +607,8 @@ tu.cursor.visitChildren(visitor);
 
 index.dispose();
 
-emitter.on('done', function () {
-  var total = 0,
-      length,
-      i;
+rewriter.execute();
 
-  patches.sort(function (a, b) {
-    return a.offset - b.offset;
-  }).filter(function (patch, pos, arr) {
-    return !pos || patch.offset !== arr[pos - 1].offset;
-  });
-
-  for (i = 0, length = patches.length; i < length; i++) {
-    patches[i].newoffset = patches[i].offset + total;
-    total += patches[i].delta;
-    //console.log(patches[i]);
-  }
-
-  fs.readFile(filename, function (err, data) {
-    var parts = [];
-
-    patches.forEach(function (patch, pos, arr) {
-      //console.log(patch.original);
-      //console.log(patch.replacement);
-      if (pos > 0) {
-        parts.push(data.slice(arr[pos - 1].offset + arr[pos -1].original.length, patch.offset));
-      } else {
-        parts.push(data.slice(0, patch.offset));
-      }
-      parts.push(new Buffer(patch.replacement));
-    });
-
-    parts.push(data.slice(patches[patches.length -1].offset + patches[patches.length - 1].original.length, data.length));
-
-    fs.writeFile(filename + '.new', Buffer.concat(parts), function (err) {
-      if (err) throw err;
-    });
-  });
+fs.writeFile(filename + '.new', rewriter.source, function (err) {
+  if (err) throw err;
 });
