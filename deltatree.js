@@ -1,3 +1,9 @@
+function assert(statement, message) {
+	if (!statement) {
+		throw message;
+	}
+}
+
 var DeltaTree = function () {
 	'use strict';
 
@@ -48,7 +54,9 @@ var DeltaTree = function () {
 		}
 
 		if (this.isLeaf) {
+			console.log('insert into leaf');
 			if (!this.isFull) {
+				console.log('leaf was not full');
 				if (i !== n) {
 					for (j = n; j > i; j--) {
 						this.values[j] = this.values[j - 1];
@@ -61,6 +69,8 @@ var DeltaTree = function () {
 				return false;
 			}
 
+			console.log('leaf was full, splitting');
+
 			result = this.doSplit();
 
 			if (result.split.offset > offset) {
@@ -72,21 +82,38 @@ var DeltaTree = function () {
 			return result;
 		}
 
+		console.log('insert into interior node');
+
+		console.log('-------------------------------------------');
+
 		result = this.children[i].doInsertion(offset, delta);
 
+		console.log('-------------------------------------------');
+
 		if (!result) {
+			console.log('inserted cleanly into child');
 			return false;
 		}
 
+		console.log('**************************************************');
+		console.log('child had to split, this gets tricky');
+		console.log('**************************************************');
+
 		if (!this.isFull) {
+			console.log('node was not full');
+			console.log('i', i);
+			console.log('n', n);
+			console.log('children before', this.children);
 			if (i !== n) {
-				for (j = n; j > i + 1; j--) {
+				for (j = n + 1; j > i + 1; j--) {
 					this.children[j] = this.children[j - 1];
 				}
 			}
 
 			this.children[i] = result.lhs;
 			this.children[i + 1] = result.rhs;
+
+			console.log('children after', this.children);
 
 			if (i !== n) {
 				for (j = n; j > i; j--) {
@@ -99,6 +126,8 @@ var DeltaTree = function () {
 
 			return false;
 		}
+
+		console.log('node was full');
 
 		this.children[i] = result.lhs;
 
@@ -116,7 +145,7 @@ var DeltaTree = function () {
 			i++;
 
 			if (i !== n) {
-				for (j = n; j > i + 1; j--) {
+				for (j = n + 1; j > i + 1; j--) {
 					insertside.children[j] = insertside.children[j - 1];
 				}
 			}
@@ -197,6 +226,40 @@ var DeltaTree = function () {
 
 	this.root = new DeltaTreeNode();
 
+	this.verifyTree = function () {
+		function verifier(node) {
+			var fullDelta = 0, i, n = node.numValuesUsed;
+			if (!(node instanceof DeltaTreeInteriorNode)) {
+				for (i = 0; i < n; i++) {
+					if (i) {
+						assert(node.values[i - 1].offset < node.values[i].offset, 'Ensure that the elements are in proper order');
+					}
+					fullDelta += node.values[i].delta;
+				}
+
+				assert(fullDelta === node.fullDelta, 'Ensure that FullDelta matches up');
+				return;
+			}
+
+			for (i = 0; i < n; i++) {
+				if (i) {
+					assert(node.values[i - 1].offset < node.values[i].offset, 'Ensure that the elements are in proper order');
+				}
+				fullDelta += node.values[i].delta;
+				fullDelta += node.children[i].fullDelta;
+
+				assert(node.children[i].values[node.children[i].numValuesUsed - 1].offset < node.values[i].offset, 'The largest value in child ' + i + ' should be smaller than offset');
+				assert(node.children[i + 1].values[0].offset > node.values[i].offset, 'The smallest value in child' + (i + 1) + ' should be larger than offset');
+				verifier(node.children[i]);
+			}
+
+			fullDelta += node.children[node.numValuesUsed].fullDelta;
+			assert(fullDelta === node.fullDelta, 'Ensure that FullDelta matches up');
+		}
+
+		verifier(this.root);
+	};
+
 	this.getDeltaAt = function (offset) {
 		'use strict';
 
@@ -234,10 +297,15 @@ var DeltaTree = function () {
 
 		if (!delta) { throw 'noop'; }
 
+		console.log('addDelta', offset, delta);
+
 		result = this.root.doInsertion(offset, delta);
 		if (result) {
+			console.log('insertion was hard');
 			this.root = new DeltaTreeInteriorNode(result);
 		}
+
+		this.verifyTree();
 	};
 
 };
