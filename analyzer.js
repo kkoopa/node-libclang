@@ -15,15 +15,15 @@ var EventEmitter = require('events').EventEmitter,
     filename = 'binding.cc',
     Rewriter = require('./rewriter'),
     rewriter = new Rewriter(fs.readFileSync(filename)),
-    //nodedir = '/usr/local/include/node/',
-    node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
-    cpp11 = false,
-    //args = [['-I', nodedir].join(''), '-Inode_modules/nan/'],
-    args = [
+    nodedir = '/usr/local/include/node/',
+    //node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
+    cpp11 = true,
+    args = [['-I', nodedir].join(''), '-Inode_modules/nan/'];
+    /*args = [
       ['-I', node_gyp_header_dir, 'src/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/v8/include/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/uv/include/'].join(''),
-      '-Inode_modules/nan/'];
+      '-Inode_modules/nan/'];*/
 
 if (cpp11) {
   args.push('-std=c++11');
@@ -289,11 +289,34 @@ function replaceObjectWrapHandle(name, extent, cb) {
 
 function replaceMakeWeak(arg0, arg1, extent, cb) {
   var offset = extent.start.fileLocation.offset,
-      arg0start = arg0.extent.start.fileLocation;
-      arg0end = arg0.extent.end.fileLocation;
+      arg0start = arg0.extent.start.fileLocation.offset;
+      arg0end = arg0.extent.end.fileLocation.offset;
+      arg1start = arg1.extent.start.fileLocation.offset;
 
-//  replacer([readAt(filename, arg0start.offset, arg0end.offset - arg0start.offset), '->SetWeak('].join(''), offset, arg1.location.fileLocation.offset - offset);
-//  replacer(['NanPersistent<v8::Value>(', readAt(filename, arg0start.offset, arg0end.offset - arg0start.offset), ')->SetWeak('].join(''), offset, arg1.location.fileLocation.offset - offset);
+  deleter(offset, arg0start - offset, false, cb);
+  inserter('NanPersistent<v8::Value>(', offset, false, cb);
+  deleter(arg0end, arg1start - arg0end, false, cb);
+  inserter(').SetWeak(', arg0end, false, cb);
+}
+
+function replaceAssignPersistent(arg0, arg1, extent, cb) {
+  var offset = extent.start.fileLocation.offset,
+      arg0start = arg0.extent.start.fileLocation.offset,
+      arg0end = arg0.extent.end.fileLocation.offset,
+      arg1start = arg1.extent.start.fileLocation.offset;
+
+  deleter(offset, arg0start - offset, false, cb);
+  deleter(arg0end, arg1start - arg0end, false, cb);
+  inserter('.Reset(', arg0end, false, cb);
+}
+
+function replaceDisposePersistent(arg0, extent, cb) {
+  var offset = extent.start.fileLocation.offset,
+      arg0start = arg0.extent.start.fileLocation.offset,
+      arg0end = arg0.extent.end.fileLocation.offset;
+
+  deleter(offset, arg0start - offset, false, cb);
+  inserter('.Reset(', arg0end, false, cb);
 }
 
 function insertRemovalWarning(offset, extent, cb) {
@@ -449,6 +472,10 @@ function visitor(parent) {
             case 'FunctionCallbackInfo':
             case 'PropertyCallbackInfo':
               replaceArgs('info', offset, length);
+              break;
+            case 'default':
+              console.log('weird args', offset);
+              replaceArgs('info', offset, length);
           }
         }
         break;
@@ -589,8 +616,10 @@ function visitor(parent) {
             }
             break;
           case 'NanAssignPersistent':
+            replaceAssignPersistent(this.getArgument(0), this.getArgument(1), this.extent);
             break;
           case 'NanDisposePersistent':
+            replaceDisposePersistent(this.getArgument(0), this.extent);
             break;
           case 'NanMakeWeakPersistent':
             replaceMakeWeak(this.getArgument(0), this.getArgument(1), this.extent);
