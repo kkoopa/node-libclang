@@ -118,9 +118,9 @@ function replaceTo(name, type, extent, cb) {
         if (operator_token.kind === Token.Punctuation) {
           paren_offset = paren_token.location.fileLocation.offset;
           operator_offset = operator_token.location.fileLocation.offset;
-          inserter(['NanTo<', type, '>('].join(''), start_offset);
-          deleter(operator_offset, paren_offset + 1 - operator_offset);
-          inserter('.FromJust()', end_offset);
+          inserter(['NanTo<', type, '>('].join(''), start_offset, false, cb);
+          deleter(operator_offset, paren_offset + 1 - operator_offset, false, cb);
+          inserter('.FromJust()', end_offset, false, cb);
           break;
         }
       }
@@ -157,9 +157,9 @@ function replaceToLocal(name, extent, cb) {
         if (operator_token.kind === Token.Punctuation) {
           paren_offset = paren_token.location.fileLocation.offset;
           operator_offset = operator_token.location.fileLocation.offset;
-          inserter(['NanTo<v8::', name, '>('].join(''), start_offset);
-          deleter(operator_offset, paren_offset + 1 - operator_offset);
-          replacer(').ToLocalChecked()', operator_offset, 1);
+          inserter(['NanTo<v8::', name, '>('].join(''), start_offset, false, cb);
+          deleter(operator_offset, paren_offset + 1 - operator_offset, false, cb);
+          replacer(').ToLocalChecked()', operator_offset, 1, false, cb);
           break;
         }
       }
@@ -197,12 +197,12 @@ function replaceMaybe(name, extent, hasargs, cb) {
         if (operator_token.kind === Token.Punctuation) {
           paren_offset = paren_token.location.fileLocation.offset;
           operator_offset = operator_token.location.fileLocation.offset;
-          inserter(['Nan', name, '('].join(''), start_offset);
-          deleter(operator_offset, paren_offset + 1 - operator_offset);
+          inserter(['Nan', name, '('].join(''), start_offset, false, cb);
+          deleter(operator_offset, paren_offset + 1 - operator_offset, false, cb);
           if (hasargs) {
             inserter(', ', operator_offset);
           }
-          inserter('.ToLocalChecked()', end_offset);
+          inserter('.ToLocalChecked()', end_offset, false, cb);
           break;
         }
       }
@@ -244,9 +244,9 @@ function replaceEquals(offset, extent, cb) {
         if (operator_token.kind === Token.Punctuation) {
           paren_offset = paren_token.location.fileLocation.offset;
           operator_offset = operator_token.location.fileLocation.offset;
-          inserter('NanEquals(', start_offset);
-          replacer(', ', operator_offset, paren_offset + 1 - operator_offset);
-          inserter('.FromJust()', end_offset);
+          inserter('NanEquals(', start_offset, false, cb);
+          replacer(', ', operator_offset, paren_offset + 1 - operator_offset, false, cb);
+          inserter('.FromJust()', end_offset, false, cb);
           break;
         }
       }
@@ -273,7 +273,7 @@ function replaceNanNewEmptyString(argoffset, extent, cb) {
 
 function replaceNanPrefix(name, offset, length, cb) {
   deleter(offset, length, cb);
-  inserter('Nan' + name, offset, cb);
+  inserter('Nan' + name, offset, false, cb);
 }
 
 function replaceObjectWrapHandle(name, extent, cb) {
@@ -283,7 +283,7 @@ function replaceObjectWrapHandle(name, extent, cb) {
       tokenOffset = token.location.fileLocation.offset;
 
   deleter(offset, tokenOffset - offset, true);
-  inserter('->handle(', tokenOffset + token.spelling.length);
+  inserter('->handle(', tokenOffset + token.spelling.length, false, cb);
   tokenlist.dispose();
 }
 
