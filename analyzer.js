@@ -16,14 +16,14 @@ var EventEmitter = require('events').EventEmitter,
     Rewriter = require('./rewriter'),
     rewriter = new Rewriter(fs.readFileSync(filename)),
     nodedir = '/usr/local/include/node/',
-    //node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
-    cpp11 = true,
-    args = [['-I', nodedir].join(''), '-Inode_modules/nan/'];
-    /*args = [
+    node_gyp_header_dir = '/home/kkoopa/.node-gyp/0.12.2/'
+    cpp11 = false,
+    //args = [['-I', nodedir].join(''), '-Inode_modules/nan/'];
+    args = [
       ['-I', node_gyp_header_dir, 'src/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/v8/include/'].join(''),
       ['-I', node_gyp_header_dir, 'deps/uv/include/'].join(''),
-      '-Inode_modules/nan/'];*/
+      '-Inode_modules/nan/'];
 
 if (cpp11) {
   args.push('-std=c++11');
@@ -200,7 +200,7 @@ function replaceMaybe(name, extent, hasargs, cb) {
           inserter(['Nan', name, '('].join(''), start_offset, false, cb);
           deleter(operator_offset, paren_offset + 1 - operator_offset, false, cb);
           if (hasargs) {
-            inserter(', ', operator_offset);
+            inserter(', ', operator_offset, false, cb);
           }
           inserter('.ToLocalChecked()', end_offset, false, cb);
           break;
@@ -283,7 +283,7 @@ function replaceObjectWrapHandle(name, extent, cb) {
       tokenOffset = token.location.fileLocation.offset;
 
   deleter(offset, tokenOffset - offset, true);
-  inserter('->handle(', tokenOffset + token.spelling.length, false, cb);
+  inserter('->handle(', tokenOffset + token.spelling.length, true, cb);
   tokenlist.dispose();
 }
 
@@ -317,6 +317,73 @@ function replaceDisposePersistent(arg0, extent, cb) {
 
   deleter(offset, arg0start - offset, false, cb);
   inserter('.Reset(', arg0end, false, cb);
+}
+
+function replaceScope(type, extent, remove, cb) {
+  var start = extent.start.fileLocation.offset,
+      end = extent.end.fileLocation.offset;
+
+  deleter(start, end + (remove ? 1 : 0) - start, false, cb);
+
+  if (!remove) {
+    inserter(['Nan', type, ' scope'].join(''), start, false, cb);
+  }
+}
+
+function replaceEscapeScope(extent, cb) {
+  var tokens = extent.tokenize(tu),
+      startoffset = extent.start.fileLocation.offset,
+      parenoffset = tokens.get(1).location.fileLocation.offset;
+
+  deleter(startoffset, parenoffset - startoffset, false, cb);
+  inserter('scope.Escape', startoffset, false, cb);
+  tokens.dispose();
+}
+
+function replaceReturnValue(extent, cb) {
+  var tokens = extent.tokenize(tu),
+      startoffset = extent.start.fileLocation.offset,
+      parenoffset = tokens.get(1).location.fileLocation.offset;
+
+  deleter(startoffset, parenoffset - startoffset, false, cb);
+  inserter('info.getReturnValue.Set', startoffset, false, cb);
+  tokens.dispose();
+}
+
+function replaceReturnMacro(type, extent, cb) {
+  var tokens = extent.tokenize(tu),
+      startoffset = extent.start.fileLocation.offset,
+      endoffset = extent.end.fileLocation.offset;
+
+  console.log('replaceReturnMacro');
+  console.log('offset', startoffset);
+  console.log('length', endoffset - startoffset);
+  deleter(startoffset, endoffset - startoffset, false, cb);
+
+  if (type === 'This' || type === 'Holder') {
+    inserter(['info.getReturnValue.Set(info.', type, '())'].join(''), startoffset, false, cb);
+  } else if (type === 'Undefined') {
+    inserter('return', startoffset, false, cb);
+  } else {
+    inserter(['info.getReturnValue.Set', type, '()'].join(''), startoffset, false, cb);
+  }
+
+  tokens.dispose();
+}
+
+
+function replaceWeakCallback(extent, cb) {
+  var tokens = extent.tokenize(tu),
+      nametoken = tokens.get(2),
+      startoffset = extent.start.fileLocation.offset,
+      nameoffset = nametoken.location.fileLocation.offset,
+      namelength = nametoken.spelling.length;
+
+  deleter(startoffset, nameoffset - startoffset, false, cb);
+  inserter('template <typename P> void ', startoffset, false, cb);
+  inserter('(const NanWeakCallbackInfo<P> &data', nameoffset + namelength, false, cb);
+
+  tokens.dispose();
 }
 
 function insertRemovalWarning(offset, extent, cb) {
@@ -429,58 +496,40 @@ function visitor(parent) {
     length = endloc.offset - offset;
     spelling = this.type.declaration.spelling;
 
-    // handle these separately as they mess everything up
     if (tu.getCursor(this.location).kind === Cursor.MacroExpansion) {
       switch (this.spelling) {
         case 'NanScope':
-          console.log(this.spelling);
-          console.log('offset', this.location.fileLocation.offset);
+          console.log('NanScope');
+          var cir = tu.getCursor(tu.getLocationForOffset(tu.getFile(filename), offset - 1));
+          console.log('***********', cir.semanticParent.displayname, '***************');
+          replaceScope('Scope', this.extent, cir.semanticParent.numArguments === 1 && cir.semanticParent.getArgument(0).type.spelling === 'const v8::FunctionCallbackInfo<v8::Value> &'); 
           break;
         case 'NanEscapableScope':
-          console.log(this.spelling);
-          console.log('offset', this.location.fileLocation.offset);
+          replaceScope('EscapableScope', this.extent); 
           break;
         case 'NanEscapeScope':
-          console.log(this.spelling);
-          console.log('offset', this.location.fileLocation.offset);
+          replaceEscapeScope(this.extent);
           break;
         case 'NanReturnValue':
-          console.log(this.spelling);
-          console.log('offset', this.location.fileLocation.offset);
+          replaceReturnValue(this.extent);
           break;
         case 'NanReturnUndefined':
-          console.log(this.spelling);
-          console.log('offset', this.location.fileLocation.offset);
+          replaceReturnMacro('Undefined', this.extent);
           break;
         case 'NanReturnNull':
-          console.log(this.spelling);
-          console.log('offset', this.location.fileLocation.offset);
+          replaceReturnMacro('Null', this.extent);
           break;
         case 'NanReturnEmptyString':
-          console.log(this.spelling);
-          console.log('offset', this.location.fileLocation.offset);
+          replaceReturnMacro('EmptyString', this.extent);
           break;
         case 'NanReturnThis':
-          console.log(this.spelling);
-          console.log('offset', this.location.fileLocation.offset);
+          replaceReturnMacro('This', this.extent);
           break;
         case 'NanReturnHolder':
-          console.log(this.spelling);
-          console.log('offset', this.location.fileLocation.offset);
+          replaceReturnMacro('Holder', this.extent);
           break;
         case 'NAN_WEAK_CALLBACK':
-          console.log('---------------------------------');
-          console.log(this.spelling);
-          console.log('offset', this.location.fileLocation.offset);
-          console.log(readAt(filename, offset, this.extent.end.fileLocation.offset - offset));
-          console.log('---------------------------------');
-        /*  break;
-        default:
-          if (this.spelling.length > 0) {
-            console.log('default');
-            console.log(this.spelling);
-            console.log('offset', this.location.fileLocation.offset);
-          }*/
+          replaceWeakCallback(this.extent);
       }
       return Cursor.Continue;
     }
