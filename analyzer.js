@@ -431,6 +431,57 @@ function visitor(parent) {
 
     // handle these separately as they mess everything up
     if (tu.getCursor(this.location).kind === Cursor.MacroExpansion) {
+      switch (this.spelling) {
+        case 'NanScope':
+          console.log(this.spelling);
+          console.log('offset', this.location.fileLocation.offset);
+          break;
+        case 'NanEscapableScope':
+          console.log(this.spelling);
+          console.log('offset', this.location.fileLocation.offset);
+          break;
+        case 'NanEscapeScope':
+          console.log(this.spelling);
+          console.log('offset', this.location.fileLocation.offset);
+          break;
+        case 'NanReturnValue':
+          console.log(this.spelling);
+          console.log('offset', this.location.fileLocation.offset);
+          break;
+        case 'NanReturnUndefined':
+          console.log(this.spelling);
+          console.log('offset', this.location.fileLocation.offset);
+          break;
+        case 'NanReturnNull':
+          console.log(this.spelling);
+          console.log('offset', this.location.fileLocation.offset);
+          break;
+        case 'NanReturnEmptyString':
+          console.log(this.spelling);
+          console.log('offset', this.location.fileLocation.offset);
+          break;
+        case 'NanReturnThis':
+          console.log(this.spelling);
+          console.log('offset', this.location.fileLocation.offset);
+          break;
+        case 'NanReturnHolder':
+          console.log(this.spelling);
+          console.log('offset', this.location.fileLocation.offset);
+          break;
+        case 'NAN_WEAK_CALLBACK':
+          console.log('---------------------------------');
+          console.log(this.spelling);
+          console.log('offset', this.location.fileLocation.offset);
+          console.log(readAt(filename, offset, this.extent.end.fileLocation.offset - offset));
+          console.log('---------------------------------');
+        /*  break;
+        default:
+          if (this.spelling.length > 0) {
+            console.log('default');
+            console.log(this.spelling);
+            console.log('offset', this.location.fileLocation.offset);
+          }*/
+      }
       return Cursor.Continue;
     }
 
