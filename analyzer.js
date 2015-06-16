@@ -212,7 +212,8 @@ function replaceMaybe(name, extent, hasargs, cb) {
 }
 
 function replaceArgs(replacement, offset, length, cb) {
-  //replacer('info', offset, length, cb);
+  inserter('info', offset, true, cb);
+  deleter(offset, length, true, cb);
 }
 
 function replaceEquals(offset, extent, cb) {
