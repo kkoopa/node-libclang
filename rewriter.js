@@ -31,7 +31,6 @@ var Rewriter = function (source) {
 
 	this.getDelta = function (offset) {
 		'use strict';
-
 		return this.offsets.getDeltaAt(offset);
 	};
 
@@ -59,12 +58,13 @@ var Rewriter = function (source) {
 
 	this.makeInsert = function (offset, string, after_inserts) {
 		'use strict';
-		var self = this;
+		var self = this,
+		    data = new Buffer(string);
 
 		this.operations.push({op: function () {
 			var adjusted_offset = self.getMappedOffset(offset, after_inserts);
-			self.setDelta(offset, string.length);
-			self.source = Buffer.concat([self.source.slice(0, adjusted_offset), new Buffer(string), self.source.slice(adjusted_offset)]);
+			self.setDelta(offset, data.length);
+			self.source = Buffer.concat([self.source.slice(0, adjusted_offset), data, self.source.slice(adjusted_offset)]);
 		}, offset: offset});
 	};
 
