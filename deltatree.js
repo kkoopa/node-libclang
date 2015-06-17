@@ -54,9 +54,7 @@ var DeltaTree = function () {
 		}
 
 		if (this.isLeaf) {
-			console.log('insert into leaf');
 			if (!this.isFull) {
-				console.log('leaf was not full');
 				if (i !== n) {
 					for (j = n; j > i; j--) {
 						this.values[j] = this.values[j - 1];
@@ -69,7 +67,6 @@ var DeltaTree = function () {
 				return false;
 			}
 
-			console.log('leaf was full, splitting');
 
 			result = this.doSplit();
 
@@ -82,28 +79,13 @@ var DeltaTree = function () {
 			return result;
 		}
 
-		console.log('insert into interior node');
-
-		console.log('-------------------------------------------');
-
 		result = this.children[i].doInsertion(offset, delta);
 
-		console.log('-------------------------------------------');
-
 		if (!result) {
-			console.log('inserted cleanly into child');
 			return false;
 		}
 
-		console.log('**************************************************');
-		console.log('child had to split, this gets tricky');
-		console.log('**************************************************');
-
 		if (!this.isFull) {
-			console.log('node was not full');
-			console.log('i', i);
-			console.log('n', n);
-			console.log('children before', this.children);
 			if (i !== n) {
 				for (j = n + 1; j > i + 1; j--) {
 					this.children[j] = this.children[j - 1];
@@ -112,8 +94,6 @@ var DeltaTree = function () {
 
 			this.children[i] = result.lhs;
 			this.children[i + 1] = result.rhs;
-
-			console.log('children after', this.children);
 
 			if (i !== n) {
 				for (j = n; j > i; j--) {
@@ -126,8 +106,6 @@ var DeltaTree = function () {
 
 			return false;
 		}
-
-		console.log('node was full');
 
 		this.children[i] = result.lhs;
 
@@ -185,9 +163,7 @@ var DeltaTree = function () {
 		'use strict';
 		var newNode;
 
-		if (!this.isFull) {
-			throw 'why split a non-full node?';
-		}
+		assert(this.isFull, 'why split a non-full node?');
 
 		if (this instanceof DeltaTreeInteriorNode) {
 			newNode = new DeltaTreeInteriorNode();
@@ -295,13 +271,11 @@ var DeltaTree = function () {
 		'use strict';
 		var result;
 
-		if (!delta) { throw 'noop'; }
-
-		console.log('addDelta', offset, delta);
+		assert(delta, 'noop');
 
 		result = this.root.doInsertion(offset, delta);
+
 		if (result) {
-			console.log('insertion was hard');
 			this.root = new DeltaTreeInteriorNode(result);
 		}
 

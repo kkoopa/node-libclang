@@ -212,8 +212,8 @@ function replaceMaybe(name, extent, hasargs, cb) {
 }
 
 function replaceArgs(replacement, offset, length, cb) {
-  inserter('info', offset, true, cb);
-  deleter(offset, length, true, cb);
+//  inserter('info', offset, true, cb);
+//  deleter(offset, length, true, cb);
 }
 
 function replaceEquals(offset, extent, cb) {
@@ -272,8 +272,8 @@ function replaceNanNewEmptyString(argoffset, extent, cb) {
 }
 
 function replaceNanPrefix(name, offset, length, cb) {
-  deleter(offset, length, cb);
   inserter('Nan' + name, offset, false, cb);
+  deleter(offset, length, true, cb);
 }
 
 function replaceObjectWrapHandle(name, extent, cb) {
@@ -305,9 +305,9 @@ function replaceAssignPersistent(arg0, arg1, extent, cb) {
       arg0end = arg0.extent.end.fileLocation.offset,
       arg1start = arg1.extent.start.fileLocation.offset;
 
-  deleter(offset, arg0start - offset, false, cb);
-  deleter(arg0end, arg1start - arg0end, false, cb);
   inserter('.Reset(', arg0end, false, cb);
+  deleter(offset, arg0start - offset, true, cb);
+  deleter(arg0end, arg1start - arg0end, true, cb);
 }
 
 function replaceDisposePersistent(arg0, extent, cb) {
@@ -315,19 +315,19 @@ function replaceDisposePersistent(arg0, extent, cb) {
       arg0start = arg0.extent.start.fileLocation.offset,
       arg0end = arg0.extent.end.fileLocation.offset;
 
-  deleter(offset, arg0start - offset, false, cb);
   inserter('.Reset(', arg0end, false, cb);
+  deleter(offset, arg0start - offset, true, cb);
 }
 
 function replaceScope(type, extent, remove, cb) {
   var start = extent.start.fileLocation.offset,
       end = extent.end.fileLocation.offset;
 
-  deleter(start, end + (remove ? 1 : 0) - start, false, cb);
-
   if (!remove) {
-    inserter(['Nan', type, ' scope'].join(''), start, false, cb);
+    //inserter(['Nan', type, ' scope'].join(''), start, false, cb);
   }
+
+  //deleter(start, end + 1 - start, false, cb);
 }
 
 function replaceEscapeScope(extent, cb) {
@@ -335,8 +335,8 @@ function replaceEscapeScope(extent, cb) {
       startoffset = extent.start.fileLocation.offset,
       parenoffset = tokens.get(1).location.fileLocation.offset;
 
-  deleter(startoffset, parenoffset - startoffset, false, cb);
   inserter('scope.Escape', startoffset, false, cb);
+  deleter(startoffset, parenoffset - startoffset, true, cb);
   tokens.dispose();
 }
 
@@ -345,8 +345,8 @@ function replaceReturnValue(extent, cb) {
       startoffset = extent.start.fileLocation.offset,
       parenoffset = tokens.get(1).location.fileLocation.offset;
 
-  deleter(startoffset, parenoffset - startoffset, false, cb);
   inserter('info.getReturnValue.Set', startoffset, false, cb);
+  deleter(startoffset, parenoffset - startoffset, true, cb);
   tokens.dispose();
 }
 
@@ -358,7 +358,6 @@ function replaceReturnMacro(type, extent, cb) {
   console.log('replaceReturnMacro');
   console.log('offset', startoffset);
   console.log('length', endoffset - startoffset);
-  deleter(startoffset, endoffset - startoffset, false, cb);
 
   if (type === 'This' || type === 'Holder') {
     inserter(['info.getReturnValue.Set(info.', type, '())'].join(''), startoffset, false, cb);
@@ -367,6 +366,8 @@ function replaceReturnMacro(type, extent, cb) {
   } else {
     inserter(['info.getReturnValue.Set', type, '()'].join(''), startoffset, false, cb);
   }
+
+  deleter(startoffset, endoffset - startoffset, true, cb);
 
   tokens.dispose();
 }
@@ -379,9 +380,9 @@ function replaceWeakCallback(extent, cb) {
       nameoffset = nametoken.location.fileLocation.offset,
       namelength = nametoken.spelling.length;
 
-  deleter(startoffset, nameoffset - startoffset, false, cb);
   inserter('template <typename P> void ', startoffset, false, cb);
   inserter('(const NanWeakCallbackInfo<P> &data', nameoffset + namelength, false, cb);
+  deleter(startoffset, nameoffset - startoffset, true, cb);
 
   tokens.dispose();
 }
@@ -499,10 +500,15 @@ function visitor(parent) {
     if (tu.getCursor(this.location).kind === Cursor.MacroExpansion) {
       switch (this.spelling) {
         case 'NanScope':
-          console.log('NanScope');
           var cir = tu.getCursor(tu.getLocationForOffset(tu.getFile(filename), offset - 1));
-          console.log('***********', cir.semanticParent.displayname, '***************');
-          replaceScope('Scope', this.extent, cir.semanticParent.numArguments === 1 && cir.semanticParent.getArgument(0).type.spelling === 'const v8::FunctionCallbackInfo<v8::Value> &'); 
+          var n_args = cir.semanticParent.numArguments;
+          if (n_args > 0) {
+            var s = cir.semanticParent.getArgument(n_args - 1).type.pointee.declaration.spelling;
+            if (s === 'PropertyCallbackInfo' || s === 'FunctionCallbackInfo') {
+              replaceScope('Scope', this.extent, true);
+            }
+          }
+          replaceScope('Scope', this.extent, false); 
           break;
         case 'NanEscapableScope':
           replaceScope('EscapableScope', this.extent); 
@@ -538,7 +544,7 @@ function visitor(parent) {
       case Cursor.TypeRef:
         switch (spelling) {
           case 'ObjectWrap':
-            switch (parent.kind) {
+            /*switch (parent.kind) {
               case Cursor.Constructor:
               case Cursor.DeclRefExpr:
                 var pair = getOtherReplacementRange(spelling, parent.extent);
@@ -553,7 +559,7 @@ function visitor(parent) {
               default:
                 var pair = getReplacementRange(spelling, extent);
                 replaceNanPrefix(spelling, pair[0], pair[1] - pair[0]);
-            }
+            }*/
         }
         break;
       case Cursor.VarDecl:
