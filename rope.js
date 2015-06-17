@@ -14,22 +14,25 @@ var Rope = function (data) {
 	adjust.call(this);
 };
 
-Rope.SPLIT_LENGTH = 4096 / 64;
+Rope.SPLIT_LENGTH = 4096 >>> 8;
 
-Rope.JOIN_LENGTH = 2048 / 64;
+Rope.JOIN_LENGTH = 2048 >>> 8;
 
 Rope.REBALANCE_RATIO = 1.2;
 
 function adjust() {
 	var divide;
 
-	if (typeof this.value !== 'undefined' && this.length > Rope.SPLIT_LENGTH) {
-		divide = this.length / 2 | 0;
-		this.left = new Rope(this.value.slice(0, divide));
-		this.right = new Rope(this.value.slice(divide));
-		delete this.value;
+	if (typeof this.value !== 'undefined') {
+		if (this.length > Rope.SPLIT_LENGTH) {
+			divide = this.length / 2 | 0;
+			this.left = new Rope(this.value.slice(0, divide));
+			this.right = new Rope(this.value.slice(divide));
+			delete this.value;
+		}
 	} else if (this.length < Rope.JOIN_LENGTH) {
-		this.value = Buffer.concat([this.left.collate(), this.right.collate()], this.left.length + this.right.length);
+		//this.value = Buffer.concat([this.left.collate(), this.right.collate()], this.left.length + this.right.length);
+		this.value = Buffer.concat([this.left.collate(), this.right.collate()]);
 		delete this.left;
 		delete this.right;
 	}
@@ -39,7 +42,8 @@ Rope.prototype.collate = function () {
 	if (typeof this.value !== 'undefined') {
 		return this.value;
 	} else {
-		return Buffer.concat([this.left.collate(), this.right.collate()], this.left.length + this.right.length);
+		//return Buffer.concat([this.left.collate(), this.right.collate()], this.left.length + this.right.length);
+		return Buffer.concat([this.left.collate(), this.right.collate()]);
 	}
 };
 
@@ -47,47 +51,23 @@ Rope.prototype.toString = function () {
 	return this.collate().toString();
 };
 
-Rope.prototype.write = function (fd, callback) {
+Rope.prototype.write = function (writeStream) {
 	var self = this;
 
-	console.log('write');
-	console.log('type', typeof this.value);
-
-	if (typeof this.value !== 'undefined') {
-		console.log(this.value.toString());
-		console.log(callback.toString());
-		fs.write(fd, this.value, callback);
+	if (!(writeStream instanceof fs.WriteStream)) {
+		this.write(fs.createWriteStream(undefined, {fd: writeStream}));
 	} else {
-		/*this.left.write(fd, function (err, written, buffer) {
-			if (err) {
-				if (callback) {
-					callback(err);
-				} else {
-					throw new Error('Error writing to file.');
-				}
-			}else {
-				self.right.write(fd, callback);
-			}
-		});*/
-		this.left.write(fd, callback);
-		this.right.write(fd, callback);
+		if (typeof this.value !== 'undefined') {
+			writeStream.write(this.value);
+		} else {
+			this.left.write(writeStream);
+			this.right.write(writeStream);
+		}
 	}
 };
 
-Rope.prototype.writeFile = function (filename, callback) {
-	var self = this;
-
-	fs.open(filename, 'w', function (err, fd) {
-		if (err) {
-			if (callback) {
-				callback(err);
-			} else {
-				throw new Error('Error opening file.');
-			}
-		} else {
-			self.write(fd, callback);
-		}
-	});
+Rope.prototype.writeFile = function (filename) {
+	this.write(fs.createWriteStream(filename));
 };
 
 
@@ -98,6 +78,10 @@ Rope.prototype.remove = function (start, end) {
 	    rightLength,
 	    rightStart,
 	    rightEnd;
+
+	console.log('before remove');
+
+	console.log(this.substring(5109, 5274));
 
 	if (start < 0 || start > this.length) {
 		throw new RangeError('Start is not within rope bounds.');
@@ -112,7 +96,8 @@ Rope.prototype.remove = function (start, end) {
 	}
 
 	if (typeof this.value !== 'undefined') {
-		this.value = this.value.slice(0, start) + this.value.slice(end);
+		//this.value = Buffer.concat([this.value.slice(0, start), this.value.slice(end)], this.value.length - (end - start));
+		this.value = Buffer.concat([this.value.slice(0, start), this.value.slice(end)]);
 		this.length = this.value.length;
 	} else {
 		leftLength = this.left.length;
@@ -120,7 +105,7 @@ Rope.prototype.remove = function (start, end) {
 		leftEnd = Math.min(end, leftLength);
 		rightLength = this.right.length;
 		rightStart = Math.max(0, Math.min(start - leftLength, rightLength));
-		rightEnd = Math.max(0, Math.min(end - leftlength, rightlength));
+		rightEnd = Math.max(0, Math.min(end - leftLength, rightLength));
 
 		if (leftStart < leftLength) {
 			this.left.remove(leftStart, leftEnd);
@@ -134,6 +119,10 @@ Rope.prototype.remove = function (start, end) {
 	}
 
 	adjust.call(this);
+
+	console.log('after remove');
+
+	console.log(this.substring(5109, 5274));
 };
 
 Rope.prototype.insert = function (position, data) {
@@ -148,13 +137,14 @@ Rope.prototype.insert = function (position, data) {
 	}
 
 	if (typeof this.value !== 'undefined') {
-		this.value = Buffer.concat([this.value.slice(0, position), data, this.value.slice(position)], this.length + data.length);
+		//this.value = Buffer.concat([this.value.slice(0, position), data, this.value.slice(position)], this.length + data.length);
+		this.value = Buffer.concat([this.value.slice(0, position), data, this.value.slice(position)]);
 		this.length = this.value.length;
 	} else {
 		leftLength = this.left.length;
 
 		if (position < leftLength) {
-			this.left.insert(position, value);
+			this.left.insert(position, data);
 			this.length = this.left.length + this.right.length;
 		} else {
 			this.right.insert(position - leftLength, data);
@@ -166,7 +156,8 @@ Rope.prototype.insert = function (position, data) {
 
 Rope.prototype.rebuild = function () {
 	if (typeof this.value === 'undefined') {
-		this.value = Buffer.concat([this.left.collate, this.right.collate], this.length);
+		//this.value = Buffer.concat([this.left.collate, this.right.collate], this.length);
+		this.value = Buffer.concat([this.left.collate, this.right.collate]);
 		delete this.left;
 		delete this.right;
 		adjust.call(this);
@@ -196,13 +187,13 @@ Rope.prototype.slice = function (start, end) {
 		end = this.length;
 	}
 
-	if (start < 0 || isNan(start)) {
+	if (start < 0 || isNaN(start)) {
 		start = 0;
 	} else if (start > this.length) {
 		start = this.length;
 	}
 
-	if (end < 0 || isNan(end)) {
+	if (end < 0 || isNaN(end)) {
 		end = 0;
 	} else if (end > this.length) {
 		end = this.length;
@@ -216,11 +207,12 @@ Rope.prototype.slice = function (start, end) {
                 leftEnd = Math.min(end, leftLength);
                 rightLength = this.right.length;
                 rightStart = Math.max(0, Math.min(start - leftLength, rightLength));
-                rightEnd = Math.max(0, Math.min(end - leftlength, rightlength));
+                rightEnd = Math.max(0, Math.min(end - leftLength, rightLength));
 
 		if (leftStart !== leftEnd) {
 			if (rightStart !== rightEnd) {
-				return Buffer.concat([this.left.slice(leftStart, leftEnd), this.right.slice(rightStart, rightEnd)], leftLength + rightLength);
+				//return Buffer.concat([this.left.slice(leftStart, leftEnd), this.right.slice(rightStart, rightEnd)], leftLength + rightLength);
+				return Buffer.concat([this.left.slice(leftStart, leftEnd), this.right.slice(rightStart, rightEnd)]);
 			} else {
 				return this.left.slice(leftStart, leftEnd);
 			}
@@ -228,7 +220,7 @@ Rope.prototype.slice = function (start, end) {
 			if (rightStart !== rightEnd) {
 				return this.right.slice(rightStart, rightEnd);
 			} else {
-				return new Buffer();
+				return new Buffer(0);
 			}
 		}
 	}
@@ -280,7 +272,7 @@ Rope.prototype.print_tree = function (level) {
 
 module.exports = Rope;
 
-var source = "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair, we had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way--in short, the period was so far like the present period, that some of its noisiest authorities insisted on its being received, for good or for evil, in the superlative degree of comparison only.\n" +
+/*var source = "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair, we had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way--in short, the period was so far like the present period, that some of its noisiest authorities insisted on its being received, for good or for evil, in the superlative degree of comparison only.\n" +
 
 "There were a king with a large jaw and a queen with a plain face, on the throne of England; there were a king with a large jaw and a queen with a fair face, on the throne of France. In both countries it was clearer than crystal to the lords of the State preserves of loaves and fishes, that things in general were settled for ever.\n" +
 
@@ -293,14 +285,4 @@ var source = "It was the best of times, it was the worst of times, it was the ag
 "All these things, and a thousand like them, came to pass in and close upon the dear old year one thousand seven hundred and seventy-five. Environed by them, while the Woodman and the Farmer worked unheeded, those two of the large jaws, and those other two of the plain and the fair faces, trod with stir enough, and carried their divine rights with a high hand. Thus did the year one thousand seven hundred and seventy-five conduct their Greatnesses, and myriads of small creatures--the creatures of this chronicle among the rest--along the roads that lay before them.";
 
 var rope = new Rope(source);
-//rope.remove(2, 6);
-//console.log(rope.toString());
-//rope.print_tree(0);
-rope.writeFile('output', function (err, written, buffer) {
-	if (err) {
-		throw err;
-	}
-
-	console.log('wrote', written);
-	console.log('data', buffer.toString());
-});
+rope.writeFile('output');*/
