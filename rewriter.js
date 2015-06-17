@@ -1,4 +1,5 @@
-var DeltaTree = require('./deltatree');
+var DeltaTree = require('./deltatree'),
+    Rope = require('./rope');
 
 Array.prototype.bisect_left = function (val, comparator) {
 	'use strict';
@@ -27,7 +28,7 @@ var Rewriter = function (source) {
 
 	this.offsets = new DeltaTree();
 	this.operations = [];
-	this.source = source;
+	this.source = new Rope(source);
 
 	this.getDelta = function (offset) {
 		'use strict';
@@ -52,7 +53,7 @@ var Rewriter = function (source) {
 		this.operations.push({op: function () {
 			var adjusted_offset = self.getMappedOffset(offset, after_inserts);
 			self.setDelta(offset, -length);
-			self.source = Buffer.concat([self.source.slice(0, adjusted_offset), self.source.slice(adjusted_offset + length)]);
+			self.source.remove(adjusted_offset, adjusted_offset + length);
 		}, offset: offset});
 	};
 
@@ -64,7 +65,7 @@ var Rewriter = function (source) {
 		this.operations.push({op: function () {
 			var adjusted_offset = self.getMappedOffset(offset, after_inserts);
 			self.setDelta(offset, data.length);
-			self.source = Buffer.concat([self.source.slice(0, adjusted_offset), data, self.source.slice(adjusted_offset)]);
+			self.source.insert(adjusted_offset, data);
 		}, offset: offset});
 	};
 
@@ -76,11 +77,24 @@ var Rewriter = function (source) {
 	};
 
 	this.execute = function () {
-		this.operations.forEach(function (val) {
+		/*this.operations.forEach(function (val) {
 			val.op();
-		});
+		});*/
+		var i = 0, length = 5;
+		for (; i < length; i++) {
+			this.operations[i].op();
+		}
 	};
 };
+
+Rewriter.prototype.write = function (writeStream) {
+	this.source.write(writeStream);
+};
+
+Rewriter.prototype.writeFile = function (filename) {
+        this.source.writeFile(filename);
+};
+
 
 module.exports = Rewriter;
 

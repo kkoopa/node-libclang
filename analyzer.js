@@ -272,8 +272,8 @@ function replaceNanNewEmptyString(argoffset, extent, cb) {
 }
 
 function replaceNanPrefix(name, offset, length, cb) {
+  deleter(offset, length, false, cb);
   inserter('Nan' + name, offset, false, cb);
-  deleter(offset, length, true, cb);
 }
 
 function replaceObjectWrapHandle(name, extent, cb) {
@@ -359,6 +359,8 @@ function replaceReturnMacro(type, extent, cb) {
   console.log('offset', startoffset);
   console.log('length', endoffset - startoffset);
 
+  deleter(startoffset, endoffset - startoffset, false, cb);
+
   if (type === 'This' || type === 'Holder') {
     inserter(['info.getReturnValue.Set(info.', type, '())'].join(''), startoffset, false, cb);
   } else if (type === 'Undefined') {
@@ -366,8 +368,6 @@ function replaceReturnMacro(type, extent, cb) {
   } else {
     inserter(['info.getReturnValue.Set', type, '()'].join(''), startoffset, false, cb);
   }
-
-  deleter(startoffset, endoffset - startoffset, true, cb);
 
   tokens.dispose();
 }
@@ -498,7 +498,7 @@ function visitor(parent) {
     spelling = this.type.declaration.spelling;
 
     if (tu.getCursor(this.location).kind === Cursor.MacroExpansion) {
-      switch (this.spelling) {
+      /*switch (this.spelling) {
         case 'NanScope':
           var cir = tu.getCursor(tu.getLocationForOffset(tu.getFile(filename), offset - 1));
           var n_args = cir.semanticParent.numArguments;
@@ -536,7 +536,7 @@ function visitor(parent) {
           break;
         case 'NAN_WEAK_CALLBACK':
           replaceWeakCallback(this.extent);
-      }
+      }*/
       return Cursor.Continue;
     }
 
@@ -746,6 +746,4 @@ index.dispose();
 
 rewriter.execute();
 
-fs.writeFile(filename + '.new', rewriter.source, function (err) {
-  if (err) throw err;
-});
+rewriter.writeFile(filename + '.new');
